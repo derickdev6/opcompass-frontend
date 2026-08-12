@@ -103,8 +103,8 @@ Failures throw `ApiError`, carrying `status`.
 | Method | Path | Returns |
 |---|---|---|
 | `POST` | `/auth/login/` | `{access, user}` + sets the refresh cookie |
-| `POST` | `/auth/refresh/` | No body — reads the cookie. → `{access}` |
-| `POST` | `/auth/logout/` | Clears the cookie. → `204` |
+| `POST` | `/auth/refresh/` | No body — reads the cookie, rotates it. → `{access}` |
+| `POST` | `/auth/logout/` | Revokes the token and clears the cookie. → `204` |
 | `GET` | `/auth/me/` | The current user |
 | `GET` | `/welcome/` | `{message, user}` |
 
@@ -127,15 +127,27 @@ so the request body key is `email`.
   `refreshInFlight`, then replays the original request once.
 - Auth endpoints pass `skipAuthRetry: true` so a failed refresh cannot recurse.
 
+**`refreshInFlight` is load-bearing, not an optimisation.** The backend rotates
+refresh tokens — each one is single-use, and the old one is blacklisted the
+moment it is exchanged. Two simultaneous refreshes would mean the second
+presents a token the first just retired, and it gets a 401. The single-flight
+promise is what stops that, including under StrictMode's double effect
+invocation in development. Verified: one refresh per page load, not two. Do not
+remove it.
+
+This does not cover two browser *tabs* refreshing at the same instant, which can
+still race. Not worth solving until someone hits it.
+
 **Session restore on reload.** `AuthProvider` calls `refreshSession()` on mount;
 if the cookie is still valid the user stays signed in across a page reload.
 `isLoading` covers that window so an authenticated user is never flashed the
 login screen. The `cancelled` flag in that effect exists because StrictMode
 double-invokes effects in development — keep it.
 
-`logout()` calls `POST /auth/logout/` to clear the cookie, then clears local
-state in a `finally` so the user is never left on a signed-in screen after
-asking to leave.
+`logout()` calls `POST /auth/logout/`, which blacklists the token server-side
+and clears the cookie, then clears local state in a `finally` so the user is
+never left on a signed-in screen after asking to leave. Signing out is real
+revocation, not just a client-side discard.
 
 ---
 
