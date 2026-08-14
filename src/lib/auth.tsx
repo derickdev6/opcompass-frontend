@@ -20,10 +20,20 @@ import {
 import { api, refreshSession, setAccessToken } from "@/lib/api"
 
 export interface User {
-  id: number
+  id: string
   email: string
-  full_name: string
+  person: string | null
+  person_name: string | null
+  status: string
+  auth_provider: string
+  mfa_enabled: boolean
   is_staff: boolean
+  is_superuser: boolean
+  roles: { code: string; scope_type: string; scope_id: string | null }[]
+  /** Flat permission codes for hiding UI the user cannot use. The server
+   *  re-checks every request regardless — this is presentation only. */
+  permissions: string[]
+  last_login_at: string | null
 }
 
 interface LoginResponse {

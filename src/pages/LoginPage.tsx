@@ -13,6 +13,25 @@ import { Label } from "@/components/ui/label"
 import { ApiError } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 
+function messageFor(caught: unknown): string {
+  if (!(caught instanceof ApiError)) {
+    return "Could not reach the server. Try again in a moment."
+  }
+  // 403 means the credentials were right but the account cannot sign in —
+  // suspended, disabled or not yet activated. The server's message says which,
+  // and it is safe to show: it is only reachable with a correct password.
+  if (caught.status === 403) return caught.message
+  // 401 stays deliberately vague. Confirming an email exists would tell an
+  // attacker which addresses are real accounts.
+  if (caught.status === 401) {
+    return "That email and password combination was not recognised."
+  }
+  if (caught.status >= 500) {
+    return "The server had a problem. Try again in a moment."
+  }
+  return caught.message
+}
+
 export default function LoginPage() {
   const { login } = useAuth()
 
@@ -29,13 +48,7 @@ export default function LoginPage() {
     try {
       await login(email, password)
     } catch (caught) {
-      // Deliberately vague: telling the user that the email was not found
-      // would tell an attacker which addresses are real accounts.
-      setError(
-        caught instanceof ApiError && caught.status === 401
-          ? "That email and password combination was not recognised."
-          : "Could not reach the server. Try again in a moment.",
-      )
+      setError(messageFor(caught))
     } finally {
       setIsSubmitting(false)
     }

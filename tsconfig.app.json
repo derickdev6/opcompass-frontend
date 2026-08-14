@@ -27,5 +27,7 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  // mock_data is outside src on purpose — it is the stand-in backend, not part
+  // of the app — but it is type-checked with the same settings.
+  "include": ["src", "mock_data"]
 }
