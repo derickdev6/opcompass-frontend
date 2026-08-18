@@ -6,7 +6,7 @@ import CrudDialogs from "@/components/form/CrudDialogs"
 import { FieldRow, SelectField, TextField, enumOptions } from "@/components/form/Field"
 import FormDialog from "@/components/form/FormDialog"
 import RowActions from "@/components/form/RowActions"
-import FilterSelect from "@/components/list/FilterSelect"
+import FilterMenu from "@/components/list/FilterMenu"
 import ListToolbar from "@/components/list/ListToolbar"
 import Pagination from "@/components/list/Pagination"
 import SearchInput from "@/components/list/SearchInput"
@@ -28,13 +28,13 @@ import type { Paginated } from "@/lib/api"
 import type { Employment, LegalEntity, Person, Position } from "@/lib/types"
 import { useApi } from "@/lib/useApi"
 import { useCrud } from "@/lib/useCrud"
-import { ALL, useListParams } from "@/lib/useListParams"
+import { useListParams } from "@/lib/useListParams"
 
 const TYPES = ["FULL_TIME", "PART_TIME", "CONTRACTOR", "INTERN", "TEMP"] as const
 const MODES = ["ONSITE", "REMOTE", "HYBRID"] as const
 const STATUSES = [
-  "PREBOARDING",
   "ONBOARDING",
+  "TRAINING",
   "PROBATION",
   "ACTIVE",
   "ON_LEAVE",
@@ -68,7 +68,7 @@ const today = () => new Date().toISOString().slice(0, 10)
 export default function EmploymentsPage() {
   const params = useListParams({
     ordering: "-hire_date",
-    filters: { status: ALL, employment_type: ALL },
+    filters: { status: [], employment_type: [] },
   })
   const { data, error, isLoading, reload } = useApi<Paginated<Employment>>(
     `/employments/${params.queryString}`,
@@ -79,16 +79,7 @@ export default function EmploymentsPage() {
   )
   const positions = useApi<Paginated<Position>>(`/positions/${query({ page_size: 200 })}`)
 
-  // "Reports to" must offer everyone, not the ten employments on the current
-  // page — the table's pagination cannot decide who can be a manager.
-  const allEmployments = useApi<Paginated<Employment>>(
-    `/employments/${query({ page_size: 200, ordering: "employee_code" })}`,
-  )
-
-  const crud = useCrud<Employment>("/employments", () => {
-    reload()
-    allEmployments.reload()
-  })
+  const crud = useCrud<Employment>("/employments", reload)
   const [form, setForm] = useState(EMPTY)
 
   // Assignment and lifecycle each get their own dialog: neither is an edit of
@@ -96,7 +87,6 @@ export default function EmploymentsPage() {
   const [assigning, setAssigning] = useState<Employment | null>(null)
   const [assignForm, setAssignForm] = useState({
     position: "",
-    manager_employment: "",
     effective_from: today(),
     change_reason: "HIRE",
   })
@@ -131,7 +121,6 @@ export default function EmploymentsPage() {
     if (assigning) {
       setAssignForm({
         position: "",
-        manager_employment: "",
         effective_from: today(),
         change_reason: "HIRE",
       })
@@ -147,13 +136,6 @@ export default function EmploymentsPage() {
       })
     }
   }, [transitioning])
-
-  const employmentOptions = (allEmployments.data?.results ?? [])
-    .filter((e) => e.id !== assigning?.id) // cannot report to yourself
-    .map((e) => ({
-      value: e.id,
-      label: `${e.employee_code} — ${e.person_detail.display_name}`,
-    }))
 
   return (
     <>
@@ -175,18 +157,18 @@ export default function EmploymentsPage() {
           label="Search employments"
           placeholder="Search by code, name or work email…"
         />
-        <FilterSelect
+        <FilterMenu
           label="Status"
           allLabel="All statuses"
-          value={params.filters.status}
-          onChange={(value) => params.setFilter("status", value)}
+          values={params.filters.status}
+          onChange={(values) => params.setFilter("status", values)}
           options={enumOptions(STATUSES)}
         />
-        <FilterSelect
+        <FilterMenu
           label="Type"
           allLabel="All types"
-          value={params.filters.employment_type}
-          onChange={(value) => params.setFilter("employment_type", value)}
+          values={params.filters.employment_type}
+          onChange={(values) => params.setFilter("employment_type", values)}
           options={enumOptions(TYPES)}
         />
       </ListToolbar>
@@ -296,7 +278,7 @@ export default function EmploymentsPage() {
         crud={crud}
         noun="employment"
         labelOf={(e) => `${e.employee_code} — ${e.person_detail.display_name}`}
-        description="New employments start in Preboarding. Use Change status to move them along."
+        description="New employments start in Onboarding. Use Change status to walk them through training and probation."
         buildBody={() => ({
           ...form,
           probation_end_date: form.probation_end_date || null,
@@ -405,13 +387,12 @@ export default function EmploymentsPage() {
         open={assigning !== null}
         onOpenChange={(open) => !open && setAssigning(null)}
         title={`Assign ${assigning?.person_detail.display_name ?? ""} to a position`}
-        description="Assignments are effective-dated. Any existing open assignment must be closed first — the server rejects overlaps."
+        description="The position's org unit decides who they report to — the manager of that unit, or the nearest one above it. Assignments are effective-dated and may not overlap."
         submitLabel="Assign"
         onSubmit={() =>
           api.post("/position-assignments/", {
             employment: assigning!.id,
             position: assignForm.position,
-            manager_employment: assignForm.manager_employment || null,
             is_primary: true,
             effective_from: assignForm.effective_from,
             change_reason: assignForm.change_reason,
@@ -434,18 +415,6 @@ export default function EmploymentsPage() {
                   p.occupant ? ` (held by ${p.occupant.name})` : ""
                 }`,
               }))}
-            />
-            <SelectField
-              name="manager_employment"
-              label="Reports to"
-              allowEmpty
-              hint="Cycles are rejected: their manager cannot already report to them."
-              errors={errors}
-              value={assignForm.manager_employment}
-              onChange={(manager_employment) =>
-                setAssignForm((f) => ({ ...f, manager_employment }))
-              }
-              options={employmentOptions}
             />
             <FieldRow>
               <TextField

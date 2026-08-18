@@ -1,6 +1,6 @@
 import { EmptyState, ErrorState, LoadingRows } from "@/components/DataState"
 import { enumOptions } from "@/components/form/Field"
-import FilterSelect from "@/components/list/FilterSelect"
+import FilterMenu from "@/components/list/FilterMenu"
 import ListToolbar from "@/components/list/ListToolbar"
 import Pagination from "@/components/list/Pagination"
 import SearchInput from "@/components/list/SearchInput"
@@ -18,11 +18,11 @@ import {
 import type { Paginated } from "@/lib/api"
 import type { DirectoryEntry } from "@/lib/types"
 import { useApi } from "@/lib/useApi"
-import { ALL, useListParams } from "@/lib/useListParams"
+import { useListParams } from "@/lib/useListParams"
 
 const STATUSES = [
-  "PREBOARDING",
   "ONBOARDING",
+  "TRAINING",
   "PROBATION",
   "ACTIVE",
   "ON_LEAVE",
@@ -34,7 +34,7 @@ const MODES = ["ONSITE", "REMOTE", "HYBRID"] as const
 export default function DirectoryPage() {
   const params = useListParams({
     ordering: "name",
-    filters: { status: ALL, work_mode: ALL },
+    filters: { status: [], work_mode: [] },
   })
 
   const { data, error, isLoading } = useApi<Paginated<DirectoryEntry>>(
@@ -55,18 +55,18 @@ export default function DirectoryPage() {
           label="Search the directory"
           placeholder="Search by name, code, email or team…"
         />
-        <FilterSelect
+        <FilterMenu
           label="Status"
           allLabel="All statuses"
-          value={params.filters.status}
-          onChange={(value) => params.setFilter("status", value)}
+          values={params.filters.status}
+          onChange={(values) => params.setFilter("status", values)}
           options={enumOptions(STATUSES)}
         />
-        <FilterSelect
+        <FilterMenu
           label="Work mode"
           allLabel="All work modes"
-          value={params.filters.work_mode}
-          onChange={(value) => params.setFilter("work_mode", value)}
+          values={params.filters.work_mode}
+          onChange={(values) => params.setFilter("work_mode", values)}
           options={enumOptions(MODES)}
         />
       </ListToolbar>

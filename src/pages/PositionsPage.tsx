@@ -11,7 +11,7 @@ import {
   enumOptions,
 } from "@/components/form/Field"
 import RowActions from "@/components/form/RowActions"
-import FilterSelect from "@/components/list/FilterSelect"
+import FilterMenu from "@/components/list/FilterMenu"
 import ListToolbar from "@/components/list/ListToolbar"
 import Pagination from "@/components/list/Pagination"
 import SearchInput from "@/components/list/SearchInput"
@@ -33,7 +33,7 @@ import type { Paginated } from "@/lib/api"
 import type { JobTitle, Location, OrgUnit, Position } from "@/lib/types"
 import { useApi } from "@/lib/useApi"
 import { useCrud } from "@/lib/useCrud"
-import { ALL, useListParams } from "@/lib/useListParams"
+import { useListParams } from "@/lib/useListParams"
 
 const STATUSES = ["OPEN", "FILLED", "FROZEN", "CLOSED"] as const
 const SENIORITIES = [
@@ -63,7 +63,7 @@ const EMPTY = {
 export default function PositionsPage() {
   const params = useListParams({
     ordering: "job_title_name",
-    filters: { status: ALL, seniority: ALL },
+    filters: { status: [], seniority: [] },
   })
 
   const { data, error, isLoading, reload } = useApi<Paginated<Position>>(
@@ -116,18 +116,18 @@ export default function PositionsPage() {
           label="Search positions"
           placeholder="Search by title, unit, location or occupant…"
         />
-        <FilterSelect
+        <FilterMenu
           label="Status"
           allLabel="All statuses"
-          value={params.filters.status}
-          onChange={(value) => params.setFilter("status", value)}
+          values={params.filters.status}
+          onChange={(values) => params.setFilter("status", values)}
           options={enumOptions(STATUSES)}
         />
-        <FilterSelect
+        <FilterMenu
           label="Seniority"
           allLabel="All seniorities"
-          value={params.filters.seniority}
-          onChange={(value) => params.setFilter("seniority", value)}
+          values={params.filters.seniority}
+          onChange={(values) => params.setFilter("seniority", values)}
           options={enumOptions(SENIORITIES)}
         />
       </ListToolbar>

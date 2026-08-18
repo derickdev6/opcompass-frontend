@@ -27,8 +27,8 @@ What exists today is the whole of it:
 
 - a sign-in screen
 - an app shell with a retractable side panel
-- Dashboard, Directory, People, Employments, Org chart, Org units, Positions,
-  Job titles, Locations, Legal entities, Users, Audit log
+- Dashboard, Directory, People, Employments, Attendance, Org chart, Org units,
+  Positions, Job titles, Locations, Legal entities, Users, Audit log
 - create / edit / delete on every entity above, plus position assignment and
   the employment lifecycle transition
 - server-side search, filter, sort and pagination on every list screen — see §5h
@@ -82,6 +82,7 @@ src/
     DataState.tsx  LoadingRows, ErrorState, EmptyState
     StatusBadge.tsx Employment and position status pills
     list/          Search, filters, sortable heads, pagination — see §5h
+    attendance/    The day strip and its legend — see §5i
   lib/
     api.ts         The ONLY module that calls fetch
     auth.tsx       AuthProvider + useAuth
@@ -160,7 +161,7 @@ only**. The server re-checks every request; never treat it as the gate.
 ## 4a. The mock backend
 
 **`npm run dev` needs no Django and no database.** `mock_data/` answers every
-call inside the browser tab, seeded with WinitLaw — one legal entity, 16 people,
+call inside the browser tab, seeded with WinitLaw — one legal entity, 19 people,
 and the real org tree (C-Level, Management, Operations → Collections/CX/QA/IT,
 Sales → NY/CA/NC/NJ). Full detail is in **`mock_data/README.md`**; the parts
 that matter when working here:
@@ -267,6 +268,11 @@ Adding a nav item means adding one entry to `SECTIONS` and one `<Route>` in
 > width and the sidebar looks stuck one toggle behind. Set
 > `element.style.transition = 'none'` before measuring. This wasted a
 > debugging cycle once already — it is a harness artifact, not a bug.
+>
+> The same applies to **exit animations**: a closed Radix dialog or popover
+> keeps its node in the DOM because `animationend` never fires. Check
+> `data-state`, not presence — `[role="dialog"][data-state="closed"]` is closed,
+> however solid it looks in a query.
 
 ## 5e. The dashboard is grouped by module
 
@@ -275,6 +281,18 @@ carries the module's name, a spec reference tag (`§5`), an icon, a one-line
 description, and a rule under the heading. That heading and rule are the visual
 division: a reader can tell at a glance which module a number belongs to, which
 starts mattering the moment there is more than one.
+
+The People block leads with **quick flows** rather than counters: cards that
+start a guided task. `NewHireDialog` is the only one so far — five steps from a
+job title to somebody sitting in a seat. It writes nothing until Finish, then
+runs the four or five POSTs in dependency order and keeps what succeeded in
+`created`, so retrying after a rejected employee code does not leave a second
+job title behind.
+
+Below it, **`WeekAttendance`** replaces the old headcount-by-org-unit bar list:
+the current Monday-to-Sunday week, worst attendance first, fixed at 500px with
+its own scroll so the panel does not grow with headcount. Days still to come
+come back as `FUTURE` and are drawn as empty shells.
 
 Only **People** exists today. When Assets, Finance or any other module lands:
 
@@ -358,6 +376,57 @@ Rules worth keeping:
 **Not built:** no optimistic updates, no cache, no bulk actions, no inline
 editing. Each save refetches the list. That is fine at this size.
 
+## 5g2. One hierarchy: `org_unit.manager_employment`
+
+**There is exactly one field defining who reports to whom**, and it lives on the
+org unit, not on the person. There is no per-person manager anywhere — the
+reporting line is *derived*:
+
+> Your manager is the manager of your org unit. If that is you, it is the
+> manager of the nearest unit above yours.
+
+`managerOf()` in `mock_data/serializers.ts` is the whole implementation, and
+`Employment.manager` / `DirectoryEntry.manager_name` are computed from it.
+**Never add a manager field to a person, an employment or an assignment.** That
+redundancy is what this design removed.
+
+Four properties follow for free, and they are the reason it is worth keeping:
+
+- **Reporting cycles are impossible.** The org tree is already acyclic, so there
+  is nothing to validate. The old cycle check is gone.
+- **A unit with no manager is transparent** — its members report straight to the
+  level above. IT and all four sales territories rely on this.
+- **Moving someone between units *is* the change of reporting line.** Assigning
+  a position is the only action that moves somebody; there is no second step and
+  no way for the two to disagree.
+- **A manager's scope is their whole subtree**, which is exactly what approvals
+  (`ApproverType.ORG_UNIT_LEAD`) and RBAC's `scope_type=ORG_UNIT` already expect.
+
+### The rules
+
+- **The manager must be a *direct* member of the unit** — their current position
+  sits in that unit, not in one of its sub-units. Sales is managed from Sales,
+  never by a rep in a territory.
+- **The company node holds nobody**, so it can have no manager. That is
+  deliberate: it exists to give the chart one root, and it makes **C-Level the
+  top of the chain, where approvals stop**.
+- **A brand-new unit cannot have a manager**, having no members yet. Create the
+  unit, put someone in a position in it, then set the manager.
+- **The rule is enforced only when the manager changes.** Someone who transfers
+  out stays the stored manager until a human fixes it, and the dropdown keeps
+  offering them marked "(no longer in this unit)". Re-validating on every save
+  would let a stale value block an unrelated rename, which is the worse failure.
+  Nothing auto-clears on transfer.
+
+Arrangements the seed covers, all with no schema beyond this one field:
+a manager at the top of their department (Javier in Operations); a
+department-level member who manages nobody (Carolina); a deputy at department
+level reporting to the department's manager (Sofía in Sales); and unmanaged
+units that fall through (IT, NY, CA, NC, NJ).
+
+Edited on the **Org units** screen, in the same create/edit dialog as the rest
+of the unit. The org chart is a read-only view of the result.
+
 ## 5h. List screens: search, filter, sort, page
 
 **All four are server-side.** Sorting a column sorts the whole collection, not
@@ -369,19 +438,19 @@ nothing should start to — the moment it does, page 2 becomes a lie.
 | `lib/useListParams.ts` | Holds the state and builds `queryString` |
 | `list/ListToolbar.tsx` | The row of controls above the table |
 | `list/SearchInput.tsx` | The search box (debounced inside the hook) |
-| `list/FilterSelect.tsx` | One dropdown, always with an "all" entry first |
+| `list/FilterMenu.tsx` | One **multi-select** filter: a checkbox menu |
 | `list/SortableHead.tsx` | A `<TableHead>` that sorts, with `aria-sort` |
 | `list/Pagination.tsx` | Range, rows-per-page and the two page buttons |
 
 The shape of a screen:
 
 ```tsx
-const params = useListParams({ ordering: "name", filters: { status: ALL } })
+const params = useListParams({ ordering: "name", filters: { status: [] } })
 const { data, reload } = useApi<Paginated<T>>(`/things/${params.queryString}`)
 …
 <ListToolbar>
   <SearchInput value={params.search} onChange={params.setSearch} label="Search things" />
-  <FilterSelect label="Status" value={params.filters.status}
+  <FilterMenu label="Status" allLabel="All statuses" values={params.filters.status}
     onChange={(v) => params.setFilter("status", v)} options={enumOptions(STATUSES)} />
 </ListToolbar>
 …
@@ -397,9 +466,17 @@ Rules worth keeping:
   the only place that list exists.
 - **Every setter resets to page 1.** Landing on page 4 of a one-page result is
   the classic bug here, and it is why the setters are not plain `useState`.
-- **`ALL` is the "no filter" sentinel**, because Radix Select cannot hold an
-  empty string — the same reason `SelectField` has `__none__`. It is dropped
-  from the query string rather than sent.
+- **Filters are multi-select and hold `string[]`.** An empty array means the
+  filter is off; several values are OR'd. There is no "all" option to tick —
+  clearing the selection *is* how you ask for everything, which is why the menu
+  offers a **Clear** action instead.
+- **Several values go on one parameter, comma-separated** —
+  `?status=ACTIVE,ON_LEAVE`. One value looks identical to the old single-select
+  request, so the change is backward compatible on the wire; the backend needs
+  an `__in` lookup rather than an exact match (`API_REQUIREMENTS.md` §3.2).
+- **The checkbox menu must not close on each tick.** `DropdownMenuCheckboxItem`
+  closes by default; `FilterMenu` calls `event.preventDefault()` in `onSelect`
+  to stop it. Removing that makes picking three statuses three trips.
 - **`field` on `SortableHead` is the API's ordering key, not the label.** Nested
   keys work: `person_detail.display_name`, `occupant.name`.
 - **A dropdown's options never come from the paged list.** "Reports to" on
@@ -423,6 +500,79 @@ nothing against Django. Do not debug that as a frontend bug.
 
 `max_page_size` is **200**, which is also the ceiling on the unpaged option
 lists above. They break silently past 200 records — `API_REQUIREMENTS.md` §7.1.
+
+## 5i. The attendance strip
+
+`pages/AttendancePage.tsx` plus `components/attendance/DayStrip.tsx`. One bar
+per day per person, modelled on an uptime board.
+
+Three things are tracked: **late arrival**, **early leave** and **full-day
+absence**, each carrying one of three justifications.
+
+- **Colour is the headline, hover is the detail.** Green on time, sky justified,
+  amber excused, rose unexcused, grey non-working. A bar is a real `<button>` so
+  the tooltip is reachable by keyboard, and every bar carries an `aria-label` —
+  the colour is never the only signal.
+- **Absence is drawn, not coloured.** Justification already owns the hue, so a
+  full day missed is **half a pill** — same width, half the height: without it,
+  "absent all day, unexcused" and "ten minutes late, unexcused" are the same
+  rose bar. Height reads as how much of the day was worked, which narrowing
+  would not, and a fourth hue would have broken the three-status scheme. The
+  button keeps its full height so the smaller bar is no harder to hit.
+- **A day takes the worst justification of its incidents.** Two incidents on one
+  day give one bar and two tooltip lines. An absence stands alone — nobody
+  arrives late to a day they never worked.
+- **The table is flat.** Org unit is a filter and the row's subtitle, not a
+  grouping. It was grouped once; the grouping bought nothing the filter does not.
+- **`MAX_DAYS` is 31**, which is why the ranges are Day / Week / Month (31) and
+  why custom is rejected above it. Custom also enforces a two-day minimum.
+- **Percentages are person-days.** Clean working days over working days, and an
+  absent day stays in the denominator — not showing up is what the number is for.
+- **`NONE` ranks below `OFF`** in `SEVERITY`, or a weekend reads as "outside
+  this employment" wherever statuses are compared.
+- **`FUTURE` is checked before the calendar**, so the unwritten end of a week is
+  uniformly shells rather than a run of filled Saturdays that look like settled
+  data.
+- **Every day is a working day if there is evidence it was worked.** A record is
+  that evidence, so a Saturday or a public holiday someone came in on resolves
+  exactly like a Tuesday. Only when nothing was recorded does the calendar get
+  to call it a day off. Agents pay hours back at the weekend; the old
+  weekend-first ordering silently swallowed those records — they were counted in
+  the Late column but had no bar anywhere on the row.
+- **There is no attendance percentage.** It was removed deliberately: hours are
+  the backing measure and they are not displayed here, so a "clean days ÷ worked
+  days" figure would be a second, competing definition of the same thing. The
+  Late / Early / Absent counts are what the screen reports.
+- **`holidayOn()` computes the eleven US federal holidays**, including the
+  observance shift — a fixed-date holiday on a Saturday is observed the Friday
+  before, on a Sunday the Monday after. Hardcoded because the backend's
+  `calendar_day` table exists with no data in it; when that is populated this
+  becomes a lookup and holidays stop being US-only.
+
+The window is the client's: the screen computes the dates and sends explicit
+`from` / `to`, so the API has no notion of "this week".
+
+### Recording
+
+Clicking a name opens `AttendanceDialog`: pick a day, see what is on file, add
+or edit a late arrival, early leave or absence. `/attendance/` is the read side
+and `/attendance-records/` the write side of the same rows, so a save reloads
+the strip behind the dialog.
+
+- **The bracket select fills the minutes field; minutes is what is stored.**
+  People think in the six brackets, but keeping the real figure means they can
+  be redrawn later without a migration. An absence has no minutes at all.
+- **Same-day rules live on the server**, not in the form: one of each kind per
+  day, and an absence cannot sit beside a partial incident — nobody arrives late
+  to a day they never worked.
+- **`DatePicker` wraps Popover + Calendar** and speaks `YYYY-MM-DD`, converting
+  at the edges in **local** time. `new Date("2026-08-17")` parses as UTC and
+  lands on the 16th for anyone west of Greenwich, which is exactly the class of
+  bug a date picker must not have.
+
+`react-day-picker` came in with `shadcn add calendar` — the first dependency
+added for a screen. `<input type="date">` was there first; its native picker
+differs per browser and is invisible in some.
 
 ## 6. Conventions
 

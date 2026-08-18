@@ -49,8 +49,12 @@ export interface OrgUnitRow {
   name: string
   code: string
   type: string
-  /** The employment leading this unit, not the person. */
-  lead_employment: string | null
+  /**
+   * The one field that defines the reporting hierarchy. Must be a direct
+   * member of this unit. Everyone's line manager is derived from it by walking
+   * the tree — there is no per-person manager anywhere.
+   */
+  manager_employment: string | null
   cost_center: string
   legal_entity: string | null
   is_active: boolean
@@ -90,7 +94,6 @@ export interface AssignmentRow {
   id: string
   employment: string
   position: string
-  manager_employment: string | null
   is_primary: boolean
   fte_pct: string
   effective_from: string
@@ -120,6 +123,25 @@ export interface UserRow {
   permissions: string[]
 }
 
+/**
+ * One logged attendance incident. A day can hold more than one — arriving late
+ * and leaving early is two rows, not a worse single one.
+ */
+export interface AttendanceEventRow {
+  id: string
+  employment: string
+  /** YYYY-MM-DD. */
+  date: string
+  type: "LATE_ARRIVAL" | "EARLY_LEAVE" | "ABSENCE"
+  /**
+   * Minutes late, or minutes short. The reporting bracket is derived, never
+   * stored. Null for a full-day absence, which has no partial figure.
+   */
+  minutes: number | null
+  justification: "UNEXCUSED" | "EXCUSED" | "JUSTIFIED"
+  reason: string
+}
+
 export interface MockDb {
   people: PersonRow[]
   legalEntities: LegalEntityRow[]
@@ -131,4 +153,5 @@ export interface MockDb {
   assignments: AssignmentRow[]
   users: UserRow[]
   auditEvents: AuditEventRow[]
+  attendance: AttendanceEventRow[]
 }

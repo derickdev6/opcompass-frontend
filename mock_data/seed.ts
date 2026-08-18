@@ -1,6 +1,5 @@
 /**
- * The sample company: WinitLaw — one legal entity in New York, 16 people
- * across C-Level, Management, Operations and Sales.
+ * The sample company: WinitLaw — one legal entity in New York, 19 people.
  *
  * Everything here is invented. The email addresses, phone numbers, tax id,
  * national IDs and passwords are fake and only ever exist inside the browser
@@ -10,24 +9,30 @@
  * just calling it again — nothing is shared between the seed and the live rows.
  *
  * The data is deliberately uneven: someone is on leave, someone is on
- * probation, someone starts next month with no seat yet, someone was
- * terminated, two positions are open, one is frozen and one is closed. Every
- * state the screens can render is represented by at least one row, so a UI
- * change that breaks one of them is visible without inventing data first.
+ * probation, someone is in training, someone starts next month with no seat
+ * yet, someone was terminated, one position is open, one frozen, one closed.
+ * Every state the screens can render is represented by at least one row, so a
+ * UI change that breaks one of them is visible without inventing data first.
  *
- * The org tree is the shape the business actually uses:
+ * The tree, with each unit's manager. Reporting lines are *derived* from this
+ * and nothing else — see `managerOf` in serializers.ts:
  *
- *   Winit
- *   ├── C-Level
- *   ├── Management
- *   ├── Operations ── Collections · CX · QA · IT
- *   └── Sales ─────── NY · CA · NC · NJ
+ *   Winit                      —            nobody sits here; a visual root
+ *   └── C-Level                Ricardo      approvals stop here
+ *       └── Management         Renata
+ *           ├── Operations     Javier
+ *           │   ├── Collections  Andrés
+ *           │   ├── CX           Lucía
+ *           │   ├── QA           Paula
+ *           │   └── IT           —          falls through to Javier
+ *           └── Sales          Camila
+ *               └── NY · CA · NC · NJ  —    all fall through to Camila
  */
 
-import type { MockDb } from "./rows"
+import type { AttendanceEventRow, EmploymentRow, MockDb } from "./rows"
 
 export function seed(): MockDb {
-  return {
+  const db: MockDb = {
     legalEntities: [
       {
         id: "le-1",
@@ -164,6 +169,23 @@ export function seed(): MockDb {
         description: "Sources and closes new client engagements in a territory.",
         is_active: true,
       },
+      {
+        id: "jt-11",
+        name: "General Manager",
+        code: "GEN-MGR",
+        job_family: "Management",
+        description: "Runs Operations and Sales; reports to the CEO.",
+        is_active: true,
+      },
+      {
+        id: "jt-12",
+        name: "Operations Coordinator",
+        code: "OPS-COORD",
+        job_family: "Operations",
+        description:
+          "Department-wide operations support, not attached to one team.",
+        is_active: true,
+      },
     ],
 
     orgUnits: [
@@ -173,7 +195,10 @@ export function seed(): MockDb {
         name: "Winit",
         code: "WNT",
         type: "COMPANY",
-        lead_employment: "emp-1",
+        // Nobody sits at the company node — it exists to give the chart a
+        // single root. With no members it can have no manager, which is what
+        // makes C-Level the top of the chain and where approvals stop.
+        manager_employment: null,
         cost_center: "CC-1000",
         legal_entity: "le-1",
         is_active: true,
@@ -184,40 +209,40 @@ export function seed(): MockDb {
         name: "C-Level",
         code: "EXEC",
         type: "DEPARTMENT",
-        lead_employment: "emp-1",
+        manager_employment: "emp-1",
         cost_center: "CC-1100",
         legal_entity: "le-1",
         is_active: true,
       },
       {
         id: "ou-3",
-        parent: "ou-1",
+        parent: "ou-2",
         name: "Management",
         code: "MGMT",
         type: "DEPARTMENT",
-        lead_employment: "emp-2",
+        manager_employment: "emp-17",
         cost_center: "CC-1200",
         legal_entity: "le-1",
         is_active: true,
       },
       {
         id: "ou-4",
-        parent: "ou-1",
+        parent: "ou-3",
         name: "Operations",
         code: "OPS",
         type: "DEPARTMENT",
-        lead_employment: "emp-3",
+        manager_employment: "emp-3",
         cost_center: "CC-2000",
         legal_entity: "le-1",
         is_active: true,
       },
       {
         id: "ou-5",
-        parent: "ou-1",
+        parent: "ou-3",
         name: "Sales",
         code: "SLS",
         type: "DEPARTMENT",
-        lead_employment: "emp-4",
+        manager_employment: "emp-4",
         cost_center: "CC-3000",
         legal_entity: "le-1",
         is_active: true,
@@ -228,7 +253,7 @@ export function seed(): MockDb {
         name: "Collections",
         code: "OPS-COL",
         type: "TEAM",
-        lead_employment: "emp-5",
+        manager_employment: "emp-5",
         cost_center: "CC-2100",
         legal_entity: "le-1",
         is_active: true,
@@ -239,7 +264,7 @@ export function seed(): MockDb {
         name: "CX",
         code: "OPS-CX",
         type: "TEAM",
-        lead_employment: "emp-8",
+        manager_employment: "emp-8",
         cost_center: "CC-2200",
         legal_entity: "le-1",
         is_active: true,
@@ -250,7 +275,7 @@ export function seed(): MockDb {
         name: "QA",
         code: "OPS-QA",
         type: "TEAM",
-        lead_employment: "emp-9",
+        manager_employment: "emp-9",
         cost_center: "CC-2300",
         legal_entity: "le-1",
         is_active: true,
@@ -262,7 +287,7 @@ export function seed(): MockDb {
         code: "OPS-IT",
         type: "TEAM",
         // No lead: the screens must render the empty case too.
-        lead_employment: null,
+        manager_employment: null,
         cost_center: "CC-2400",
         legal_entity: "le-1",
         is_active: true,
@@ -273,7 +298,9 @@ export function seed(): MockDb {
         name: "NY",
         code: "SLS-NY",
         type: "TEAM",
-        lead_employment: "emp-11",
+        // The state teams have no lead of their own: the reps report to the
+        // Sales Manager, with the Sales Team Lead assisting across all four.
+        manager_employment: null,
         cost_center: "CC-3100",
         legal_entity: "le-1",
         is_active: true,
@@ -284,7 +311,7 @@ export function seed(): MockDb {
         name: "CA",
         code: "SLS-CA",
         type: "TEAM",
-        lead_employment: null,
+        manager_employment: null,
         cost_center: "CC-3200",
         legal_entity: "le-1",
         is_active: true,
@@ -295,7 +322,7 @@ export function seed(): MockDb {
         name: "NC",
         code: "SLS-NC",
         type: "TEAM",
-        lead_employment: "emp-13",
+        manager_employment: null,
         cost_center: "CC-3300",
         legal_entity: "le-1",
         is_active: true,
@@ -306,7 +333,7 @@ export function seed(): MockDb {
         name: "NJ",
         code: "SLS-NJ",
         type: "TEAM",
-        lead_employment: null,
+        manager_employment: null,
         cost_center: "CC-3400",
         legal_entity: "le-1",
         is_active: true,
@@ -567,6 +594,54 @@ export function seed(): MockDb {
           { name: "Silvia Aguirre", relation: "Mother", phone: "+1 929 555 0176" },
         ],
       },
+      {
+        id: "p-17",
+        first_name: "Renata",
+        last_name: "Salcedo",
+        preferred_name: "",
+        national_id: "***-**-7719",
+        national_id_country: "US",
+        birth_date: "1982-09-04",
+        gender: "FEMALE",
+        personal_email: "renata.salcedo@example.com",
+        personal_phone: "+1 212 555 0128",
+        pronouns: "she/her",
+        emergency_contact: [
+          { name: "Óscar Salcedo", relation: "Spouse", phone: "+1 212 555 0129" },
+        ],
+      },
+      {
+        id: "p-18",
+        first_name: "Carolina",
+        last_name: "Duarte",
+        preferred_name: "Caro",
+        national_id: "***-**-4260",
+        national_id_country: "US",
+        birth_date: "1990-02-19",
+        gender: "FEMALE",
+        personal_email: "carolina.duarte@example.com",
+        personal_phone: "+1 646 555 0184",
+        pronouns: "she/her",
+        emergency_contact: [
+          { name: "Rubén Duarte", relation: "Brother", phone: "+1 646 555 0185" },
+        ],
+      },
+      {
+        id: "p-19",
+        first_name: "Héctor",
+        last_name: "Molina",
+        preferred_name: "",
+        national_id: "***-**-3095",
+        national_id_country: "US",
+        birth_date: "1994-12-01",
+        gender: "MALE",
+        personal_email: "hector.molina@example.com",
+        personal_phone: "+1 917 555 0137",
+        pronouns: "he/him",
+        emergency_contact: [
+          { name: "Alicia Molina", relation: "Mother", phone: "+1 917 555 0138" },
+        ],
+      },
     ],
 
     positions: [
@@ -596,10 +671,12 @@ export function seed(): MockDb {
         currency: "USD",
         headcount: 1,
       },
+      // Department managers sit inside the department they run, not in
+      // Management — so the org chart shows them at the top of their own unit.
       {
         id: "pos-3",
         job_title: "jt-3",
-        org_unit: "ou-3",
+        org_unit: "ou-4",
         location: "loc-1",
         seniority: "MANAGER",
         is_people_manager: true,
@@ -612,7 +689,7 @@ export function seed(): MockDb {
       {
         id: "pos-4",
         job_title: "jt-4",
-        org_unit: "ou-3",
+        org_unit: "ou-5",
         location: "loc-1",
         seniority: "MANAGER",
         is_people_manager: true,
@@ -726,10 +803,12 @@ export function seed(): MockDb {
         currency: "USD",
         headcount: 1,
       },
+      // Sits at Sales level, not in a state team: this seat assists the Sales
+      // Manager across all four territories and leads none of them.
       {
         id: "pos-13",
         job_title: "jt-9",
-        org_unit: "ou-10",
+        org_unit: "ou-5",
         location: "loc-1",
         seniority: "LEAD",
         is_people_manager: true,
@@ -739,7 +818,7 @@ export function seed(): MockDb {
         currency: "USD",
         headcount: 1,
       },
-      // Sofía's old seat, vacated on promotion and re-opened as a req.
+      // Sofía's old seat, backfilled when she moved up to Sales level.
       {
         id: "pos-14",
         job_title: "jt-10",
@@ -747,7 +826,7 @@ export function seed(): MockDb {
         location: "loc-1",
         seniority: "MID",
         is_people_manager: false,
-        status: "OPEN",
+        status: "FILLED",
         salary_band_min: "45000.00",
         salary_band_max: "60000.00",
         currency: "USD",
@@ -803,6 +882,35 @@ export function seed(): MockDb {
         status: "FROZEN",
         salary_band_min: "45000.00",
         salary_band_max: "60000.00",
+        currency: "USD",
+        headcount: 1,
+      },
+      // The whole of Management: one seat.
+      {
+        id: "pos-19",
+        job_title: "jt-11",
+        org_unit: "ou-3",
+        location: "loc-1",
+        seniority: "MANAGER",
+        is_people_manager: false,
+        status: "FILLED",
+        salary_band_min: "85000.00",
+        salary_band_max: "105000.00",
+        currency: "USD",
+        headcount: 1,
+      },
+      // Department-level Operations: in Ops, in none of its teams, not the
+      // manager.
+      {
+        id: "pos-20",
+        job_title: "jt-12",
+        org_unit: "ou-4",
+        location: "loc-1",
+        seniority: "MID",
+        is_people_manager: false,
+        status: "FILLED",
+        salary_band_min: "55000.00",
+        salary_band_max: "70000.00",
         currency: "USD",
         headcount: 1,
       },
@@ -1031,7 +1139,7 @@ export function seed(): MockDb {
         hire_date: "2026-09-08",
         probation_end_date: "2026-12-08",
         termination_date: null,
-        status: "PREBOARDING",
+        status: "ONBOARDING",
         timezone: "America/New_York",
         work_email: "natalia.pena@winitlaw.com",
         slack_handle: "",
@@ -1046,10 +1154,55 @@ export function seed(): MockDb {
         hire_date: "2026-08-03",
         probation_end_date: null,
         termination_date: null,
-        status: "ONBOARDING",
+        status: "TRAINING",
         timezone: "America/New_York",
         work_email: "tomas.aguirre@winitlaw.com",
         slack_handle: "@tom",
+      },
+      {
+        id: "emp-17",
+        person: "p-17",
+        legal_entity: "le-1",
+        employee_code: "W-1017",
+        employment_type: "FULL_TIME",
+        work_mode: "ONSITE",
+        hire_date: "2018-02-05",
+        probation_end_date: "2018-05-05",
+        termination_date: null,
+        status: "ACTIVE",
+        timezone: "America/New_York",
+        work_email: "renata.salcedo@winitlaw.com",
+        slack_handle: "@renata",
+      },
+      {
+        id: "emp-18",
+        person: "p-18",
+        legal_entity: "le-1",
+        employee_code: "W-1018",
+        employment_type: "FULL_TIME",
+        work_mode: "HYBRID",
+        hire_date: "2022-03-14",
+        probation_end_date: "2022-06-14",
+        termination_date: null,
+        status: "ACTIVE",
+        timezone: "America/New_York",
+        work_email: "carolina.duarte@winitlaw.com",
+        slack_handle: "@caro",
+      },
+      {
+        id: "emp-19",
+        person: "p-19",
+        legal_entity: "le-1",
+        employee_code: "W-1019",
+        employment_type: "FULL_TIME",
+        work_mode: "ONSITE",
+        hire_date: "2024-03-04",
+        probation_end_date: "2024-06-04",
+        termination_date: null,
+        status: "ACTIVE",
+        timezone: "America/New_York",
+        work_email: "hector.molina@winitlaw.com",
+        slack_handle: "@hector",
       },
     ],
 
@@ -1058,7 +1211,6 @@ export function seed(): MockDb {
         id: "as-1",
         employment: "emp-1",
         position: "pos-1",
-        manager_employment: null,
         is_primary: true,
         fte_pct: "100.00",
         effective_from: "2016-01-04",
@@ -1069,7 +1221,6 @@ export function seed(): MockDb {
         id: "as-2",
         employment: "emp-2",
         position: "pos-2",
-        manager_employment: "emp-1",
         is_primary: true,
         fte_pct: "100.00",
         effective_from: "2017-03-06",
@@ -1080,7 +1231,6 @@ export function seed(): MockDb {
         id: "as-3",
         employment: "emp-3",
         position: "pos-3",
-        manager_employment: "emp-2",
         is_primary: true,
         fte_pct: "100.00",
         effective_from: "2018-06-11",
@@ -1091,7 +1241,6 @@ export function seed(): MockDb {
         id: "as-4",
         employment: "emp-4",
         position: "pos-4",
-        manager_employment: "emp-2",
         is_primary: true,
         fte_pct: "100.00",
         effective_from: "2019-02-04",
@@ -1102,7 +1251,6 @@ export function seed(): MockDb {
         id: "as-5",
         employment: "emp-5",
         position: "pos-5",
-        manager_employment: "emp-3",
         is_primary: true,
         fte_pct: "100.00",
         effective_from: "2019-09-16",
@@ -1113,7 +1261,6 @@ export function seed(): MockDb {
         id: "as-6",
         employment: "emp-6",
         position: "pos-6",
-        manager_employment: "emp-5",
         is_primary: true,
         fte_pct: "100.00",
         effective_from: "2026-04-06",
@@ -1124,7 +1271,6 @@ export function seed(): MockDb {
         id: "as-7",
         employment: "emp-7",
         position: "pos-8",
-        manager_employment: "emp-8",
         is_primary: true,
         fte_pct: "50.00",
         effective_from: "2022-07-11",
@@ -1135,7 +1281,6 @@ export function seed(): MockDb {
         id: "as-8",
         employment: "emp-8",
         position: "pos-9",
-        manager_employment: "emp-3",
         is_primary: true,
         fte_pct: "100.00",
         effective_from: "2020-11-02",
@@ -1146,7 +1291,6 @@ export function seed(): MockDb {
         id: "as-9",
         employment: "emp-9",
         position: "pos-10",
-        manager_employment: "emp-3",
         is_primary: true,
         fte_pct: "100.00",
         effective_from: "2021-05-17",
@@ -1157,7 +1301,6 @@ export function seed(): MockDb {
         id: "as-10",
         employment: "emp-10",
         position: "pos-12",
-        manager_employment: "emp-3",
         is_primary: true,
         fte_pct: "80.00",
         effective_from: "2023-01-09",
@@ -1169,7 +1312,6 @@ export function seed(): MockDb {
         id: "as-11",
         employment: "emp-11",
         position: "pos-14",
-        manager_employment: "emp-4",
         is_primary: true,
         fte_pct: "100.00",
         effective_from: "2020-08-03",
@@ -1180,7 +1322,6 @@ export function seed(): MockDb {
         id: "as-12",
         employment: "emp-11",
         position: "pos-13",
-        manager_employment: "emp-4",
         is_primary: true,
         fte_pct: "100.00",
         effective_from: "2024-01-02",
@@ -1191,7 +1332,6 @@ export function seed(): MockDb {
         id: "as-13",
         employment: "emp-12",
         position: "pos-15",
-        manager_employment: "emp-4",
         is_primary: true,
         fte_pct: "100.00",
         effective_from: "2022-02-14",
@@ -1202,7 +1342,6 @@ export function seed(): MockDb {
         id: "as-14",
         employment: "emp-13",
         position: "pos-16",
-        manager_employment: "emp-4",
         is_primary: true,
         fte_pct: "100.00",
         effective_from: "2023-08-07",
@@ -1214,7 +1353,6 @@ export function seed(): MockDb {
         id: "as-15",
         employment: "emp-14",
         position: "pos-17",
-        manager_employment: "emp-4",
         is_primary: true,
         fte_pct: "100.00",
         effective_from: "2021-10-04",
@@ -1225,10 +1363,40 @@ export function seed(): MockDb {
         id: "as-16",
         employment: "emp-16",
         position: "pos-11",
-        manager_employment: "emp-9",
         is_primary: true,
         fte_pct: "100.00",
         effective_from: "2026-08-03",
+        effective_to: null,
+        change_reason: "HIRE",
+      },
+      {
+        id: "as-17",
+        employment: "emp-17",
+        position: "pos-19",
+        is_primary: true,
+        fte_pct: "100.00",
+        effective_from: "2018-02-05",
+        effective_to: null,
+        change_reason: "HIRE",
+      },
+      {
+        id: "as-18",
+        employment: "emp-18",
+        position: "pos-20",
+        is_primary: true,
+        fte_pct: "100.00",
+        effective_from: "2022-03-14",
+        effective_to: null,
+        change_reason: "HIRE",
+      },
+      // Backfills the NY seat Sofía left when she moved up to Sales level.
+      {
+        id: "as-19",
+        employment: "emp-19",
+        position: "pos-14",
+        is_primary: true,
+        fte_pct: "100.00",
+        effective_from: "2024-03-04",
         effective_to: null,
         change_reason: "HIRE",
       },
@@ -1524,5 +1692,181 @@ export function seed(): MockDb {
         ip: null,
       },
     ],
+
+    // Filled in below: generated rather than written out, because a month of
+    // incidents across nineteen people is a thousand lines of noise.
+    attendance: [],
   }
+
+  db.attendance = attendanceFor(db.employments)
+  return db
+}
+
+// ---------------------------------------------------------------------------
+// Attendance
+// ---------------------------------------------------------------------------
+
+/** How far back incidents are generated. A month view plus slack. */
+const ATTENDANCE_DAYS = 45
+
+/**
+ * A stable 0..1 from a string.
+ *
+ * Deterministic on purpose: the same key gives the same value on every reload,
+ * so the strip does not reshuffle itself between refreshes and a screenshot
+ * still matches tomorrow. It is not random and must never be used for anything
+ * that needs to be.
+ */
+function roll(key: string): number {
+  let hash = 2166136261
+  for (let index = 0; index < key.length; index += 1) {
+    hash ^= key.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return ((hash >>> 0) % 100_000) / 100_000
+}
+
+const LATE_REASONS: Record<string, string[]> = {
+  UNEXCUSED: ["No notice given", "Overslept", "Did not call in"],
+  EXCUSED: ["Traffic on the bridge", "Train delay", "Notified the manager"],
+  JUSTIFIED: ["Medical appointment", "Court appearance", "Family emergency"],
+}
+
+const EARLY_REASONS: Record<string, string[]> = {
+  UNEXCUSED: ["Left without notice", "Unlogged departure"],
+  EXCUSED: ["Childcare pickup", "Approved by the manager"],
+  JUSTIFIED: ["Medical appointment", "Bereavement", "Pre-approved leave"],
+}
+
+const ABSENCE_REASONS: Record<string, string[]> = {
+  UNEXCUSED: ["No show", "Did not call in", "Unreported absence"],
+  EXCUSED: ["Called in sick", "Notified the manager"],
+  JUSTIFIED: ["Medical certificate", "Bereavement leave", "Jury duty"],
+}
+
+/** Minutes for a bracket, so every one of the six is represented. */
+const MINUTE_STEPS = [12, 24, 47, 95, 160, 220]
+
+function isoDate(value: Date): string {
+  return value.toISOString().slice(0, 10)
+}
+
+/**
+ * Generate the incident log for the window ending today.
+ *
+ * Weekends are skipped, and so is anything outside the employment's own dates —
+ * a future hire and a terminated employment both come back with no rows, which
+ * is what makes the "outside the employment" state visible on the strip.
+ */
+function attendanceFor(employments: EmploymentRow[]): AttendanceEventRow[] {
+  const events: AttendanceEventRow[] = []
+  const today = new Date()
+  let sequence = 0
+
+  for (const employment of employments) {
+    // Punctuality is a property of the person, not of the day, so one badly
+    // behaved employee shows a visibly worse row than everyone else. Cubed to
+    // skew the company heavily punctual: most rows should read as a wall of
+    // green, or a bad week stops standing out.
+    const proneness = roll(`${employment.id}:proneness`) ** 3
+
+    for (let back = ATTENDANCE_DAYS - 1; back >= 0; back -= 1) {
+      const day = new Date(today)
+      day.setDate(day.getDate() - back)
+      const date = isoDate(day)
+      const weekend = day.getDay() === 0 || day.getDay() === 6
+
+      // Weekends are workable — agents pay hours back on a Saturday — and
+      // whether someone comes in has nothing to do with how punctual they are,
+      // so this gate ignores proneness. Rare, so a weekend bar reads as the
+      // exception it is. With no hours model yet, an incident is the only
+      // evidence a day was worked, so a seeded weekend always carries one.
+      if (weekend) {
+        if (roll(`${employment.id}:${date}:weekend`) > 0.05) continue
+        const key = `${employment.id}:${date}:WEEKEND_SHIFT`
+        const type = roll(`${key}:type`) < 0.7 ? "LATE_ARRIVAL" : "EARLY_LEAVE"
+        const justification =
+          roll(`${key}:just`) < 0.4
+            ? "UNEXCUSED"
+            : roll(`${key}:just2`) < 0.6
+              ? "EXCUSED"
+              : "JUSTIFIED"
+        const pool = (type === "LATE_ARRIVAL" ? LATE_REASONS : EARLY_REASONS)[
+          justification
+        ]!
+        sequence += 1
+        events.push({
+          id: `att-${sequence}`,
+          employment: employment.id,
+          date,
+          type,
+          minutes: MINUTE_STEPS[Math.floor(roll(`${key}:mins`) * MINUTE_STEPS.length)] ?? 12,
+          justification,
+          reason: pool[Math.floor(roll(`${key}:why`) * pool.length)] ?? pool[0]!,
+        })
+        continue
+      }
+      if (date < employment.hire_date) continue
+      if (employment.termination_date && date > employment.termination_date) continue
+
+      // Even the worst offender keeps roughly three days in four.
+      const chance = proneness * 0.35
+
+      // A full day missed is the rarest of the three, and it stands alone:
+      // nobody arrives late to a day they never worked.
+      const absenceKey = `${employment.id}:${date}:ABSENCE`
+      if (roll(absenceKey) < chance * 0.34) {
+        const justification =
+          roll(`${absenceKey}:just`) < 0.3
+            ? "UNEXCUSED"
+            : roll(`${absenceKey}:just2`) < 0.5
+              ? "EXCUSED"
+              : "JUSTIFIED"
+        const pool = ABSENCE_REASONS[justification]!
+        sequence += 1
+        events.push({
+          id: `att-${sequence}`,
+          employment: employment.id,
+          date,
+          type: "ABSENCE",
+          minutes: null,
+          justification,
+          reason: pool[Math.floor(roll(`${absenceKey}:why`) * pool.length)] ?? pool[0]!,
+        })
+        continue
+      }
+
+      for (const type of ["LATE_ARRIVAL", "EARLY_LEAVE"] as const) {
+        const key = `${employment.id}:${date}:${type}`
+        // Leaving early is rarer than arriving late.
+        const weight = type === "LATE_ARRIVAL" ? 1 : 0.4
+        if (roll(key) >= chance * weight) continue
+
+        const justification =
+          roll(`${key}:just`) < 0.45
+            ? "UNEXCUSED"
+            : roll(`${key}:just2`) < 0.6
+              ? "EXCUSED"
+              : "JUSTIFIED"
+        const minutes =
+          MINUTE_STEPS[Math.floor(roll(`${key}:mins`) * MINUTE_STEPS.length)] ?? 12
+        const pool = (type === "LATE_ARRIVAL" ? LATE_REASONS : EARLY_REASONS)[
+          justification
+        ]!
+        sequence += 1
+
+        events.push({
+          id: `att-${sequence}`,
+          employment: employment.id,
+          date,
+          type,
+          minutes,
+          justification,
+          reason: pool[Math.floor(roll(`${key}:why`) * pool.length)] ?? pool[0]!,
+        })
+      }
+    }
+  }
+
+  return events
 }

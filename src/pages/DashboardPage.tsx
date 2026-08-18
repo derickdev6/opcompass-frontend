@@ -1,7 +1,10 @@
-import { ArrowRight, Briefcase, DoorOpen, MapPinned, Users } from "lucide-react"
+import { ArrowRight, UserPlus, Users } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
+import { useState } from "react"
 import { Link } from "react-router-dom"
 
+import NewHireDialog from "@/components/dashboard/NewHireDialog"
+import WeekAttendance from "@/components/dashboard/WeekAttendance"
 import { ErrorState, LoadingRows } from "@/components/DataState"
 import ModuleSection from "@/components/ModuleSection"
 import PageHeader from "@/components/PageHeader"
@@ -29,7 +32,8 @@ export default function DashboardPage() {
 }
 
 function PeopleModule() {
-  const { data, error, isLoading } = useApi<Headcount>("/headcount/")
+  const { data, error, isLoading, reload } = useApi<Headcount>("/headcount/")
+  const [hiring, setHiring] = useState(false)
 
   return (
     <ModuleSection
@@ -46,105 +50,74 @@ function PeopleModule() {
         </Button>
       }
     >
+      {/* Quick flows, where the stat cards used to be. Only the new hire is
+          defined so far; further flows are more cards in this grid. */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <QuickFlow
+          label="New hire"
+          description="Job title, seat, person and employment in five steps."
+          icon={UserPlus}
+          onClick={() => setHiring(true)}
+        />
+      </div>
+
       {isLoading ? (
         <LoadingRows rows={4} />
       ) : error ? (
         <ErrorState message={error} />
       ) : !data ? null : (
-        <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard
-              label="Total headcount"
-              value={data.total}
-              icon={Users}
-              to="/employments"
-            />
-            <StatCard
-              label="Active"
-              value={data.by_status.ACTIVE ?? 0}
-              icon={Briefcase}
-              to="/directory"
-            />
-            <StatCard
-              label="Open positions"
-              value={data.open_positions}
-              icon={DoorOpen}
-              to="/positions"
-            />
-            <StatCard
-              label="Remote"
-              value={data.by_work_mode.REMOTE ?? 0}
-              icon={MapPinned}
-              to="/directory"
-            />
-          </div>
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <WeekAttendance />
 
-          <div className="mt-4 grid gap-4 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Headcount by org unit</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {data.by_org_unit.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    No one is assigned to a position yet.
-                  </p>
-                ) : (
-                  <BarList
-                    items={data.by_org_unit.map((row) => ({
-                      label: row.position__org_unit__name,
-                      value: row.headcount,
-                    }))}
-                  />
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">By employment type</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <BarList
-                  items={Object.entries(data.by_employment_type).map(
-                    ([label, value]) => ({
-                      label: label.replace(/_/g, " ").toLowerCase(),
-                      value,
-                    }),
-                  )}
-                />
-              </CardContent>
-            </Card>
-          </div>
-        </>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">By employment type</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <BarList
+                items={Object.entries(data.by_employment_type).map(([label, value]) => ({
+                  label: label.replace(/_/g, " ").toLowerCase(),
+                  value,
+                }))}
+              />
+            </CardContent>
+          </Card>
+        </div>
       )}
+
+      <NewHireDialog
+        open={hiring}
+        onOpenChange={setHiring}
+        onFinished={reload}
+      />
     </ModuleSection>
   )
 }
 
-function StatCard({
+/** A card that starts a guided flow, rather than reporting a number. */
+function QuickFlow({
   label,
-  value,
+  description,
   icon: Icon,
-  to,
+  onClick,
 }: {
   label: string
-  value: number
+  description: string
   icon: LucideIcon
-  to: string
+  onClick: () => void
 }) {
   return (
     <Card className="transition-colors hover:border-foreground/20">
       <CardContent className="py-5">
-        <Link to={to} className="flex items-center gap-4">
+        <button type="button" onClick={onClick} className="flex w-full items-center gap-4 text-left">
           <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted">
             <Icon className="size-5 text-muted-foreground" aria-hidden />
           </div>
           <div className="min-w-0">
-            <p className="truncate text-sm text-muted-foreground">{label}</p>
-            <p className="text-2xl font-semibold tabular-nums">{value}</p>
+            <p className="font-medium">{label}</p>
+            <p className="text-xs text-muted-foreground">{description}</p>
           </div>
-        </Link>
+        </button>
       </CardContent>
     </Card>
   )

@@ -5,7 +5,7 @@ import { EmptyState, ErrorState, LoadingRows } from "@/components/DataState"
 import CrudDialogs from "@/components/form/CrudDialogs"
 import { FieldRow, TextAreaField, TextField } from "@/components/form/Field"
 import RowActions from "@/components/form/RowActions"
-import FilterSelect from "@/components/list/FilterSelect"
+import FilterMenu from "@/components/list/FilterMenu"
 import ListToolbar from "@/components/list/ListToolbar"
 import Pagination from "@/components/list/Pagination"
 import SearchInput from "@/components/list/SearchInput"
@@ -26,12 +26,12 @@ import type { Paginated } from "@/lib/api"
 import type { JobTitle } from "@/lib/types"
 import { useApi } from "@/lib/useApi"
 import { useCrud } from "@/lib/useCrud"
-import { ALL, useListParams } from "@/lib/useListParams"
+import { useListParams } from "@/lib/useListParams"
 
 const EMPTY = { name: "", code: "", job_family: "", description: "" }
 
 export default function JobTitlesPage() {
-  const params = useListParams({ ordering: "name", filters: { job_family: ALL } })
+  const params = useListParams({ ordering: "name", filters: { job_family: [] } })
   const { data, error, isLoading, reload } = useApi<Paginated<JobTitle>>(
     `/job-titles/${params.queryString}`,
   )
@@ -81,11 +81,11 @@ export default function JobTitlesPage() {
           label="Search job titles"
           placeholder="Search by name, code or family…"
         />
-        <FilterSelect
+        <FilterMenu
           label="Family"
           allLabel="All families"
-          value={params.filters.job_family}
-          onChange={(value) => params.setFilter("job_family", value)}
+          values={params.filters.job_family}
+          onChange={(values) => params.setFilter("job_family", values)}
           options={familyOptions}
         />
       </ListToolbar>

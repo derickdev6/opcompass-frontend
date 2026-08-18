@@ -5,7 +5,7 @@ import CrudDialogs from "@/components/form/CrudDialogs"
 import { FieldRow, SelectField, TextField, enumOptions } from "@/components/form/Field"
 import RowActions from "@/components/form/RowActions"
 import { EmptyState, ErrorState, LoadingRows } from "@/components/DataState"
-import FilterSelect from "@/components/list/FilterSelect"
+import FilterMenu from "@/components/list/FilterMenu"
 import ListToolbar from "@/components/list/ListToolbar"
 import Pagination from "@/components/list/Pagination"
 import SearchInput from "@/components/list/SearchInput"
@@ -26,14 +26,14 @@ import type { Paginated } from "@/lib/api"
 import type { Location } from "@/lib/types"
 import { useApi } from "@/lib/useApi"
 import { useCrud } from "@/lib/useCrud"
-import { ALL, useListParams } from "@/lib/useListParams"
+import { useListParams } from "@/lib/useListParams"
 
 const TYPES = ["OFFICE", "REMOTE", "HYBRID_HUB", "CLIENT_SITE"] as const
 
 const EMPTY = { name: "", type: "OFFICE", country: "", timezone: "UTC" }
 
 export default function LocationsPage() {
-  const params = useListParams({ ordering: "name", filters: { type: ALL } })
+  const params = useListParams({ ordering: "name", filters: { type: [] } })
   const { data, error, isLoading, reload } = useApi<Paginated<Location>>(
     `/locations/${params.queryString}`,
   )
@@ -75,11 +75,11 @@ export default function LocationsPage() {
           label="Search locations"
           placeholder="Search by name, country or timezone…"
         />
-        <FilterSelect
+        <FilterMenu
           label="Type"
           allLabel="All types"
-          value={params.filters.type}
-          onChange={(value) => params.setFilter("type", value)}
+          values={params.filters.type}
+          onChange={(values) => params.setFilter("type", values)}
           options={enumOptions(TYPES)}
         />
       </ListToolbar>

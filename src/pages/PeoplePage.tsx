@@ -5,7 +5,7 @@ import { EmptyState, ErrorState, LoadingRows } from "@/components/DataState"
 import CrudDialogs from "@/components/form/CrudDialogs"
 import { FieldRow, SelectField, TextField, enumOptions } from "@/components/form/Field"
 import RowActions from "@/components/form/RowActions"
-import FilterSelect from "@/components/list/FilterSelect"
+import FilterMenu from "@/components/list/FilterMenu"
 import ListToolbar from "@/components/list/ListToolbar"
 import Pagination from "@/components/list/Pagination"
 import SearchInput from "@/components/list/SearchInput"
@@ -25,7 +25,7 @@ import type { Paginated } from "@/lib/api"
 import type { Person } from "@/lib/types"
 import { useApi } from "@/lib/useApi"
 import { useCrud } from "@/lib/useCrud"
-import { ALL, useListParams } from "@/lib/useListParams"
+import { useListParams } from "@/lib/useListParams"
 
 const GENDERS = ["FEMALE", "MALE", "NON_BINARY", "OTHER", "UNDISCLOSED"] as const
 
@@ -46,7 +46,7 @@ const EMPTY = {
 
 export default function PeoplePage() {
   // Sorted by the Name column, so the default order matches a visible header.
-  const params = useListParams({ ordering: "display_name", filters: { gender: ALL } })
+  const params = useListParams({ ordering: "display_name", filters: { gender: [] } })
 
   const { data, error, isLoading, reload } = useApi<Paginated<Person>>(
     `/people/${params.queryString}`,
@@ -99,11 +99,11 @@ export default function PeoplePage() {
           label="Search people"
           placeholder="Search by name, email or phone…"
         />
-        <FilterSelect
+        <FilterMenu
           label="Gender"
           allLabel="Any gender"
-          value={params.filters.gender}
-          onChange={(value) => params.setFilter("gender", value)}
+          values={params.filters.gender}
+          onChange={(values) => params.setFilter("gender", values)}
           options={enumOptions(GENDERS)}
         />
       </ListToolbar>

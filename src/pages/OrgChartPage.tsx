@@ -81,9 +81,9 @@ function OrgNode({ node, depth }: { node: OrgUnitNode; depth: number }) {
           </span>
         )}
 
-        {node.lead_name && (
+        {node.manager_name && (
           <span className="ml-auto truncate text-sm text-muted-foreground">
-            Lead: {node.lead_name}
+            Manager: {node.manager_name}
           </span>
         )}
       </div>

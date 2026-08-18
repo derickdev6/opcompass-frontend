@@ -23,8 +23,8 @@ export interface OrgUnitNode {
   name: string
   code: string
   type: string
-  lead_employment: string | null
-  lead_name: string | null
+  manager_employment: string | null
+  manager_name: string | null
   cost_center: string
   position_count: number
   children: OrgUnitNode[]
@@ -37,7 +37,12 @@ export interface OrgUnit {
   name: string
   code: string
   type: string
-  lead_name: string | null
+  /**
+   * The unit's manager, and the only field defining the reporting hierarchy.
+   * Must be a direct member. Every person's line manager is derived from it.
+   */
+  manager_employment: string | null
+  manager_name: string | null
   cost_center: string
   legal_entity: string | null
   is_active: boolean
@@ -93,8 +98,6 @@ export interface PositionAssignment {
   position: string
   job_title: string
   org_unit: string
-  manager_employment: string | null
-  manager_name: string | null
   is_primary: boolean
   fte_pct: string
   effective_from: string
@@ -195,4 +198,79 @@ export interface AuditEvent {
   subject_id: string | null
   occurred_at: string
   ip: string | null
+}
+
+// --- Attendance -----------------------------------------------------------
+
+/** What was logged against a day. */
+export type AttendanceType = "LATE_ARRIVAL" | "EARLY_LEAVE" | "ABSENCE"
+
+/** Whether it counts against the person. Applies to all three types. */
+export type AttendanceJustification = "UNEXCUSED" | "EXCUSED" | "JUSTIFIED"
+
+/** How far outside the schedule, in the brackets the business tracks. */
+export type AttendanceBucket = "M15" | "M30" | "H1" | "H2" | "H3" | "H4"
+
+export interface AttendanceIncident {
+  id: string
+  employment: string
+  date: string
+  type: AttendanceType
+  /** Null for a full-day absence: there is no partial figure to bracket. */
+  bucket: AttendanceBucket | null
+  minutes: number | null
+  justification: AttendanceJustification
+  reason: string
+}
+
+/**
+ * One cell of the day strip.
+ *
+ * `status` is what colours the bar: `CLEAN` when the day was worked with
+ * nothing logged, otherwise the **worst** justification of that day's
+ * incidents. Three states count neither for nor against: `OFF` is a
+ * non-working day, `NONE` falls outside the employment, and `FUTURE` has not
+ * happened yet — a day still to come is not a day worked cleanly.
+ *
+ * `absent` is drawn on top of the colour rather than as another colour, so a
+ * whole day missed is never mistaken for arriving a quarter of an hour late.
+ *
+ * `holiday` names the public holiday a date falls on, whether or not it was
+ * worked — a red bar on Thanksgiving should say so.
+ */
+export interface AttendanceDay {
+  date: string
+  status: "CLEAN" | "JUSTIFIED" | "EXCUSED" | "UNEXCUSED" | "OFF" | "NONE" | "FUTURE"
+  absent: boolean
+  holiday: string | null
+  incidents: AttendanceIncident[]
+}
+
+export interface AttendanceRow {
+  employment: string
+  employee_code: string
+  name: string
+  job_title: string | null
+  org_unit: string | null
+  org_unit_name: string | null
+  late_count: number
+  early_count: number
+  absent_count: number
+  days: AttendanceDay[]
+}
+
+export interface AttendanceSummary {
+  from: string
+  to: string
+  /** Every date in the window, so a row and its header stay aligned. */
+  dates: string[]
+  people: AttendanceRow[]
+  totals: {
+    late: number
+    early: number
+    absent: number
+    unexcused: number
+    excused: number
+    justified: number
+  }
 }

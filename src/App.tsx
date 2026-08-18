@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom"
 import AppShell from "@/components/AppShell"
 import ErrorBoundary from "@/components/ErrorBoundary"
 import { AuthProvider, useAuth } from "@/lib/auth"
+import AttendancePage from "@/pages/AttendancePage"
 import AuditPage from "@/pages/AuditPage"
 import DashboardPage from "@/pages/DashboardPage"
 import DirectoryPage from "@/pages/DirectoryPage"
@@ -48,6 +49,7 @@ function AuthenticatedRoutes() {
         <Route path="directory" element={<DirectoryPage />} />
         <Route path="people" element={<PeoplePage />} />
         <Route path="employments" element={<EmploymentsPage />} />
+        <Route path="attendance" element={<AttendancePage />} />
         <Route path="org-chart" element={<OrgChartPage />} />
         <Route path="org-units" element={<OrgUnitsPage />} />
         <Route path="positions" element={<PositionsPage />} />

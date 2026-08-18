@@ -16,9 +16,6 @@ import { useDebounced } from "@/lib/useDebounced"
  * one page is the classic bug here.
  */
 
-/** Radix Select cannot hold an empty string, so this stands for "no filter". */
-export const ALL = "all"
-
 export const PAGE_SIZES = [10, 20, 50, 100]
 
 export interface ListParams {
@@ -27,13 +24,18 @@ export interface ListParams {
   /** A field name, or `-field` for descending. Empty means the API's default. */
   ordering: string
   search: string
-  filters: Record<string, string>
+  /**
+   * Selected values per filter. **Multi-select**: an empty array means the
+   * filter is off, and several values are OR'd — "active, on leave and
+   * suspended" is one request, not three.
+   */
+  filters: Record<string, string[]>
   /** Spread onto every `<SortableHead>`: `<SortableHead field="name" {...params.sort}>`. */
   sort: { ordering: string; onSort: (field: string) => void }
   /** Append to the collection path: `/people/${params.queryString}`. */
   queryString: string
   setSearch: (value: string) => void
-  setFilter: (key: string, value: string) => void
+  setFilter: (key: string, values: string[]) => void
   toggleSort: (field: string) => void
   setPage: (page: number) => void
   setPageSize: (size: number) => void
@@ -42,8 +44,11 @@ export interface ListParams {
 interface Options {
   /** Initial sort, e.g. `"name"` or `"-hire_date"`. */
   ordering?: string
-  /** The filters this screen exposes, keyed by query parameter. */
-  filters?: Record<string, string>
+  /**
+   * The filters this screen exposes, keyed by query parameter, each starting
+   * as an empty array — `{ status: [], work_mode: [] }`.
+   */
+  filters?: Record<string, string[]>
 }
 
 export function useListParams({
@@ -64,8 +69,8 @@ export function useListParams({
     setPage(1)
   }, [])
 
-  const setFilter = useCallback((key: string, value: string) => {
-    setFilters((current) => ({ ...current, [key]: value }))
+  const setFilter = useCallback((key: string, values: string[]) => {
+    setFilters((current) => ({ ...current, [key]: values }))
     setPage(1)
   }, [])
 
@@ -81,9 +86,12 @@ export function useListParams({
   }, [])
 
   const queryString = useMemo(() => {
+    // Several values go on one parameter, comma-separated:
+    // `?status=ACTIVE,ON_LEAVE`. One value is indistinguishable from the old
+    // single-select form, so this stays backward compatible.
     const active: Record<string, string> = {}
-    for (const [key, value] of Object.entries(filters)) {
-      if (value && value !== ALL) active[key] = value
+    for (const [key, values] of Object.entries(filters)) {
+      if (values.length > 0) active[key] = values.join(",")
     }
     return query({
       search: debouncedSearch,

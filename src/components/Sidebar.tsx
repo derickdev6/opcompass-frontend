@@ -1,6 +1,7 @@
 import {
   BriefcaseBusiness,
   Building2,
+  CalendarClock,
   ChevronsLeft,
   ChevronsRight,
   ClipboardList,
@@ -49,6 +50,7 @@ const SECTIONS: NavSection[] = [
       { to: "/directory", label: "Directory", icon: Users },
       { to: "/people", label: "People", icon: Contact },
       { to: "/employments", label: "Employments", icon: ClipboardList },
+      { to: "/attendance", label: "Attendance", icon: CalendarClock },
     ],
   },
   {

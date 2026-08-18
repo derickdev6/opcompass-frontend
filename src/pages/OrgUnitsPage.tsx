@@ -5,7 +5,7 @@ import { EmptyState, ErrorState, LoadingRows } from "@/components/DataState"
 import CrudDialogs from "@/components/form/CrudDialogs"
 import { FieldRow, SelectField, TextField, enumOptions } from "@/components/form/Field"
 import RowActions from "@/components/form/RowActions"
-import FilterSelect from "@/components/list/FilterSelect"
+import FilterMenu from "@/components/list/FilterMenu"
 import ListToolbar from "@/components/list/ListToolbar"
 import Pagination from "@/components/list/Pagination"
 import SearchInput from "@/components/list/SearchInput"
@@ -24,10 +24,10 @@ import {
 } from "@/components/ui/table"
 import { query } from "@/lib/api"
 import type { Paginated } from "@/lib/api"
-import type { LegalEntity, OrgUnit } from "@/lib/types"
+import type { Employment, LegalEntity, OrgUnit } from "@/lib/types"
 import { useApi } from "@/lib/useApi"
 import { useCrud } from "@/lib/useCrud"
-import { ALL, useListParams } from "@/lib/useListParams"
+import { useListParams } from "@/lib/useListParams"
 
 const TYPES = ["COMPANY", "DIVISION", "DEPARTMENT", "TEAM"] as const
 
@@ -38,10 +38,11 @@ const EMPTY = {
   parent: "",
   legal_entity: "",
   cost_center: "",
+  manager_employment: "",
 }
 
 export default function OrgUnitsPage() {
-  const params = useListParams({ ordering: "code", filters: { type: ALL } })
+  const params = useListParams({ ordering: "code", filters: { type: [] } })
   const { data, error, isLoading, reload } = useApi<Paginated<OrgUnit>>(
     `/org-units/${params.queryString}`,
   )
@@ -53,6 +54,11 @@ export default function OrgUnitsPage() {
   // the table's pagination must not decide what a unit can hang off.
   const allUnits = useApi<Paginated<OrgUnit>>(
     `/org-units/${query({ page_size: 200, ordering: "code" })}`,
+  )
+
+  // And for the manager dropdown, which is filtered to the unit's own members.
+  const allEmployments = useApi<Paginated<Employment>>(
+    `/employments/${query({ page_size: 200, ordering: "employee_code" })}`,
   )
 
   const crud = useCrud<OrgUnit>("/org-units", () => {
@@ -71,6 +77,7 @@ export default function OrgUnitsPage() {
         parent: unit.parent ?? "",
         legal_entity: unit.legal_entity ?? "",
         cost_center: unit.cost_center,
+        manager_employment: unit.manager_employment ?? "",
       })
     } else if (crud.isCreating) {
       setForm(EMPTY)
@@ -82,6 +89,38 @@ export default function OrgUnitsPage() {
   const parentOptions = (allUnits.data?.results ?? [])
     .filter((unit) => unit.id !== crud.editing?.id)
     .map((unit) => ({ value: unit.id, label: `${unit.code} — ${unit.name}` }))
+
+  // A unit's manager must be one of its own **direct** members: Sales is
+  // managed from Sales, never by a rep sitting in one of its territories.
+  const editingId = crud.editing?.id ?? null
+  const members = editingId
+    ? (allEmployments.data?.results ?? []).filter(
+        (employment) =>
+          employment.status !== "TERMINATED" &&
+          employment.current_position?.org_unit_id === editingId,
+      )
+    : []
+
+  const managerOptions = members.map((employment) => ({
+    value: employment.id,
+    label: `${employment.employee_code} — ${employment.person_detail.display_name}`,
+  }))
+
+  // A manager who has since transferred out is still the stored value, so keep
+  // them in the list — otherwise the field renders blank and an unrelated edit
+  // silently clears it.
+  const storedManager = crud.editing?.manager_employment
+  if (storedManager && !members.some((employment) => employment.id === storedManager)) {
+    const employment = (allEmployments.data?.results ?? []).find(
+      (candidate) => candidate.id === storedManager,
+    )
+    if (employment) {
+      managerOptions.unshift({
+        value: employment.id,
+        label: `${employment.employee_code} — ${employment.person_detail.display_name} (no longer in this unit)`,
+      })
+    }
+  }
 
   return (
     <>
@@ -101,13 +140,13 @@ export default function OrgUnitsPage() {
           value={params.search}
           onChange={params.setSearch}
           label="Search org units"
-          placeholder="Search by name, code, parent or lead…"
+          placeholder="Search by name, code, parent or manager…"
         />
-        <FilterSelect
+        <FilterMenu
           label="Type"
           allLabel="All types"
-          value={params.filters.type}
-          onChange={(value) => params.setFilter("type", value)}
+          values={params.filters.type}
+          onChange={(values) => params.setFilter("type", values)}
           options={enumOptions(TYPES)}
         />
       </ListToolbar>
@@ -131,7 +170,7 @@ export default function OrgUnitsPage() {
                   <SortableHead field="name" {...params.sort}>Name</SortableHead>
                   <SortableHead field="type" {...params.sort}>Type</SortableHead>
                   <SortableHead field="parent_name" {...params.sort}>Parent</SortableHead>
-                  <SortableHead field="lead_name" {...params.sort}>Lead</SortableHead>
+                  <SortableHead field="manager_name" {...params.sort}>Manager</SortableHead>
                   <SortableHead field="cost_center" {...params.sort}>
                     Cost center
                   </SortableHead>
@@ -152,7 +191,7 @@ export default function OrgUnitsPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>{unit.parent_name ?? "—"}</TableCell>
-                    <TableCell>{unit.lead_name ?? "—"}</TableCell>
+                    <TableCell>{unit.manager_name ?? "—"}</TableCell>
                     <TableCell>{unit.cost_center || "—"}</TableCell>
                     <TableCell className="text-right tabular-nums">
                       {unit.headcount}
@@ -194,6 +233,7 @@ export default function OrgUnitsPage() {
           ...form,
           parent: form.parent || null,
           legal_entity: form.legal_entity || null,
+          manager_employment: form.manager_employment || null,
         })}
       >
         {(errors) => (
@@ -255,6 +295,22 @@ export default function OrgUnitsPage() {
                 value: e.id,
                 label: e.name,
               }))}
+            />
+            <SelectField
+              name="manager_employment"
+              label="Manager"
+              allowEmpty
+              hint={
+                crud.isCreating
+                  ? "Set once the unit has people in it — a manager has to be one of its own members."
+                  : managerOptions.length === 0
+                    ? "Nobody sits directly in this unit yet. Assign someone to a position here first."
+                    : "Everyone in this unit and below reports up through them. Only its own direct members are offered."
+              }
+              errors={errors}
+              value={form.manager_employment}
+              onChange={(manager_employment) => setForm((f) => ({ ...f, manager_employment }))}
+              options={managerOptions}
             />
           </>
         )}

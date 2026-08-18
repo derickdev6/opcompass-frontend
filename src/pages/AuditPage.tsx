@@ -1,5 +1,5 @@
 import { EmptyState, ErrorState, LoadingRows } from "@/components/DataState"
-import FilterSelect from "@/components/list/FilterSelect"
+import FilterMenu from "@/components/list/FilterMenu"
 import ListToolbar from "@/components/list/ListToolbar"
 import Pagination from "@/components/list/Pagination"
 import SearchInput from "@/components/list/SearchInput"
@@ -18,12 +18,12 @@ import { query } from "@/lib/api"
 import type { Paginated } from "@/lib/api"
 import type { AuditEvent } from "@/lib/types"
 import { useApi } from "@/lib/useApi"
-import { ALL, useListParams } from "@/lib/useListParams"
+import { useListParams } from "@/lib/useListParams"
 
 export default function AuditPage() {
   const params = useListParams({
     ordering: "-occurred_at",
-    filters: { subject_type: ALL },
+    filters: { subject_type: [] },
   })
   const { data, error, isLoading } = useApi<Paginated<AuditEvent>>(
     `/audit-events/${params.queryString}`,
@@ -58,11 +58,11 @@ export default function AuditPage() {
           label="Search the audit log"
           placeholder="Search by action, actor or subject…"
         />
-        <FilterSelect
+        <FilterMenu
           label="Subject"
           allLabel="All subjects"
-          value={params.filters.subject_type}
-          onChange={(value) => params.setFilter("subject_type", value)}
+          values={params.filters.subject_type}
+          onChange={(values) => params.setFilter("subject_type", values)}
           options={subjectOptions}
         />
       </ListToolbar>

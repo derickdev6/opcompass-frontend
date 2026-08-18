@@ -12,7 +12,7 @@ import {
 } from "@/components/form/Field"
 import FormDialog from "@/components/form/FormDialog"
 import RowActions from "@/components/form/RowActions"
-import FilterSelect from "@/components/list/FilterSelect"
+import FilterMenu from "@/components/list/FilterMenu"
 import ListToolbar from "@/components/list/ListToolbar"
 import Pagination from "@/components/list/Pagination"
 import SearchInput from "@/components/list/SearchInput"
@@ -35,7 +35,7 @@ import { useAuth } from "@/lib/auth"
 import type { Person, UserAccount } from "@/lib/types"
 import { useApi } from "@/lib/useApi"
 import { useCrud } from "@/lib/useCrud"
-import { ALL, useListParams } from "@/lib/useListParams"
+import { useListParams } from "@/lib/useListParams"
 
 const STATUSES = ["ACTIVE", "PENDING", "SUSPENDED", "DISABLED"] as const
 const PROVIDERS = ["LOCAL", "OIDC", "SAML"] as const
@@ -54,7 +54,7 @@ export default function UsersPage() {
 
   const params = useListParams({
     ordering: "email",
-    filters: { status: ALL, auth_provider: ALL },
+    filters: { status: [], auth_provider: [] },
   })
   const { data, error, isLoading, reload } = useApi<Paginated<UserAccount>>(
     `/users/${params.queryString}`,
@@ -109,18 +109,18 @@ export default function UsersPage() {
           label="Search users"
           placeholder="Search by email or person…"
         />
-        <FilterSelect
+        <FilterMenu
           label="Status"
           allLabel="All statuses"
-          value={params.filters.status}
-          onChange={(value) => params.setFilter("status", value)}
+          values={params.filters.status}
+          onChange={(values) => params.setFilter("status", values)}
           options={enumOptions(STATUSES)}
         />
-        <FilterSelect
+        <FilterMenu
           label="Provider"
           allLabel="All providers"
-          value={params.filters.auth_provider}
-          onChange={(value) => params.setFilter("auth_provider", value)}
+          values={params.filters.auth_provider}
+          onChange={(values) => params.setFilter("auth_provider", values)}
           options={enumOptions(PROVIDERS)}
         />
       </ListToolbar>

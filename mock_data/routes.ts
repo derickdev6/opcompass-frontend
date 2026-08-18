@@ -24,9 +24,16 @@ import {
   recordEvent,
   removeById,
 } from "./db"
-import type { EmploymentRow, PersonRow, UserRow } from "./rows"
+import type {
+  AttendanceEventRow,
+  EmploymentRow,
+  OrgUnitRow,
+  PersonRow,
+  UserRow,
+} from "./rows"
 import {
   TRANSITIONS,
+  attendanceSummary,
   headcount,
   isCurrent,
   orgUnitTree,
@@ -35,6 +42,7 @@ import {
   serializeEmployment,
   serializeOrgUnit,
   serializePerson,
+  serializeIncident,
   serializePosition,
   serializeSessionUser,
   serializeUserAccount,
@@ -205,8 +213,11 @@ interface ListOptions {
   /** Fields `?search=` looks in, substring and case-insensitive. */
   search?: string[]
   /**
-   * Query parameters that filter by exact match on the serialised field of the
-   * same name — the mock's stand-in for DRF's `filterset_fields`.
+   * Query parameters that filter on the serialised field of the same name.
+   *
+   * **Multi-value**: `?status=ACTIVE,ON_LEAVE` keeps rows matching either, an
+   * `__in` lookup rather than an exact match. A single value behaves exactly
+   * as an exact match would, so this stays backward compatible.
    */
   filters?: string[]
 }
@@ -227,9 +238,12 @@ function listOf<Row, Out>(
   }
 
   for (const field of options.filters ?? []) {
-    const value = params.get(field)
-    if (value) {
-      items = items.filter((item) => String(valueAt(item, field) ?? "") === value)
+    const raw = params.get(field)
+    if (raw) {
+      const wanted = raw.split(",").filter(Boolean)
+      items = items.filter((item) =>
+        wanted.includes(String(valueAt(item, field) ?? "")),
+      )
     }
   }
 
@@ -638,11 +652,58 @@ function hasAncestor(unitId: string, ancestorId: string): boolean {
   return false
 }
 
+/** Is this employment's current seat directly in `unitId`? */
+function isDirectMember(employmentId: string, unitId: string): boolean {
+  const assignment = openAssignmentFor(employmentId)
+  const position = findById(db.positions, assignment?.position)
+  return position?.org_unit === unitId
+}
+
+/**
+ * The unit's manager must be a live, **direct** member of it.
+ *
+ * Direct on purpose: Sales is managed by someone sitting in Sales, never by a
+ * rep in one of its territories. The company node holds nobody and therefore
+ * has no manager, which is what makes C-Level the top of the chain.
+ *
+ * Only re-checked when it *changes*: a manager who has since transferred out
+ * would otherwise block every unrelated edit to the unit, which is a worse
+ * failure than a stale manager sitting visibly in the table until someone
+ * fixes it.
+ */
+function checkManager(
+  data: Body,
+  invalid: Invalid,
+  unit: OrgUnitRow | null,
+): string | null {
+  const current = unit?.manager_employment ?? null
+  const manager = optional(data, "manager_employment", current)
+  if (!manager || manager === current) return manager
+
+  const employment = findById(db.employments, manager)
+  if (!employment) {
+    invalid.add("manager_employment", "That employment does not exist.")
+  } else if (employment.status === "TERMINATED") {
+    invalid.add("manager_employment", "A terminated employment cannot manage a unit.")
+  } else if (!unit) {
+    invalid.add(
+      "manager_employment",
+      "A new unit has no members yet. Create it, assign someone to a position in it, then set the manager.",
+    )
+  } else if (!isDirectMember(manager, unit.id)) {
+    invalid.add(
+      "manager_employment",
+      `${employment.employee_code} is not a member of ${unit.name}. A unit's manager must sit in it, not in one of its sub-units.`,
+    )
+  }
+  return manager
+}
+
 function orgUnits(): Collection {
   return {
     list: (params) =>
       listOf(db.orgUnits, serializeOrgUnit, params, {
-        search: ["name", "code", "parent_name", "lead_name", "cost_center"],
+        search: ["name", "code", "parent_name", "manager_name", "cost_center"],
         filters: ["type", "parent"],
       }),
 
@@ -656,6 +717,7 @@ function orgUnits(): Collection {
       if (parent && !findById(db.orgUnits, parent)) {
         invalid.add("parent", "That org unit does not exist.")
       }
+      const manager = checkManager(data, invalid, null)
       invalid.throwIfAny()
 
       const row = {
@@ -664,7 +726,7 @@ function orgUnits(): Collection {
         name: text(data, "name"),
         code: text(data, "code"),
         type: text(data, "type", "TEAM"),
-        lead_employment: null,
+        manager_employment: manager,
         cost_center: text(data, "cost_center"),
         legal_entity: optional(data, "legal_entity", null),
         is_active: true,
@@ -695,8 +757,10 @@ function orgUnits(): Collection {
       } else if (parent && hasAncestor(parent, row.id)) {
         invalid.add("parent", "That unit is below this one; the tree would loop.")
       }
+      const manager = checkManager(data, invalid, row)
       invalid.throwIfAny()
 
+      row.manager_employment = manager
       row.parent = parent
       row.name = text(data, "name", row.name)
       row.code = text(data, "code", row.code)
@@ -868,7 +932,7 @@ function employments(): Collection {
         termination_date: null,
         // Every employment starts here and is walked forward by
         // change-status; the create form cannot set it.
-        status: "PREBOARDING",
+        status: "ONBOARDING",
         timezone: text(data, "timezone", "UTC"),
         work_email: text(data, "work_email"),
         slack_handle: "",
@@ -901,15 +965,12 @@ function employments(): Collection {
     remove: (id) => {
       const row = findById(db.employments, id)
       if (!row) throw notFound()
-      if (db.orgUnits.some((unit) => unit.lead_employment === row.id)) {
-        throw refuse("This employment leads an org unit. Reassign the lead first.")
-      }
-      const reports = db.assignments.some(
-        (assignment) =>
-          assignment.manager_employment === row.id && assignment.effective_to === null,
-      )
-      if (reports) {
-        throw refuse("Other people report to this employment. Move them first.")
+      // Managing a unit is the only way to have reports, so this one guard
+      // covers both cases.
+      if (db.orgUnits.some((unit) => unit.manager_employment === row.id)) {
+        throw refuse(
+          "This employment manages an org unit. Give that unit a new manager first.",
+        )
       }
 
       // Its assignments go with it, and any seat it held goes back to open.
@@ -1021,7 +1082,139 @@ function users(): Collection {
   }
 }
 
+
+const ATTENDANCE_TYPES = ["LATE_ARRIVAL", "EARLY_LEAVE", "ABSENCE"]
+const ATTENDANCE_JUSTIFICATIONS = ["UNEXCUSED", "EXCUSED", "JUSTIFIED"]
+
+/**
+ * One attendance incident, as a plain resource so the editing dialog can add,
+ * change and remove them. The strip reads `/attendance/`; this is the write
+ * side of the same rows.
+ */
+function attendanceRecords(): Collection {
+  const validate = (data: Body, invalid: Invalid, self: AttendanceEventRow | null) => {
+    invalid.require(data, "employment", "date", "type", "justification")
+
+    const employmentId = text(data, "employment")
+    const employment = findById(db.employments, employmentId)
+    if (employmentId && !employment) {
+      invalid.add("employment", "That employment does not exist.")
+    }
+
+    const type = text(data, "type")
+    if (type && !ATTENDANCE_TYPES.includes(type)) {
+      invalid.add("type", "Not an attendance type.")
+    }
+    const justification = text(data, "justification")
+    if (justification && !ATTENDANCE_JUSTIFICATIONS.includes(justification)) {
+      invalid.add("justification", "Not a justification.")
+    }
+
+    const date = text(data, "date")
+    if (employment && date) {
+      if (date < employment.hire_date) {
+        invalid.add("date", `Before this employment started on ${employment.hire_date}.`)
+      }
+      if (employment.termination_date && date > employment.termination_date) {
+        invalid.add(
+          "date",
+          `After this employment ended on ${employment.termination_date}.`,
+        )
+      }
+    }
+
+    // A partial incident is measured; an absence is the whole day and is not.
+    if (type === "LATE_ARRIVAL" || type === "EARLY_LEAVE") {
+      const minutes = Number(data.minutes)
+      if (!Number.isFinite(minutes) || minutes <= 0) {
+        invalid.add("minutes", "Enter how many minutes.")
+      } else if (minutes >= 24 * 60) {
+        invalid.add("minutes", "That is a whole day. Record an absence instead.")
+      }
+    }
+
+    // Same-day rules. Nobody arrives late to a day they never worked, and one
+    // of each kind is enough — a second is an edit of the first.
+    const sameDay = db.attendance.filter(
+      (row) =>
+        row.employment === employmentId && row.date === date && row.id !== self?.id,
+    )
+    if (type === "ABSENCE" && sameDay.length > 0) {
+      invalid.add(
+        "type",
+        "This day already has a late arrival or early leave recorded. Remove it before marking a full-day absence.",
+      )
+    }
+    if (type !== "ABSENCE" && sameDay.some((row) => row.type === "ABSENCE")) {
+      invalid.add("type", "This day is already recorded as a full-day absence.")
+    }
+    if (type && sameDay.some((row) => row.type === type)) {
+      invalid.add("type", "That is already recorded for this day. Edit it instead.")
+    }
+  }
+
+  const write = (row: AttendanceEventRow, data: Body) => {
+    row.employment = text(data, "employment", row.employment)
+    row.date = text(data, "date", row.date)
+    row.type = text(data, "type", row.type) as AttendanceEventRow["type"]
+    row.justification = text(
+      data,
+      "justification",
+      row.justification,
+    ) as AttendanceEventRow["justification"]
+    row.reason = text(data, "reason", row.reason)
+    row.minutes = row.type === "ABSENCE" ? null : Number(data.minutes)
+  }
+
+  return {
+    list: (params) =>
+      listOf(db.attendance, serializeIncident, params, {
+        search: ["reason"],
+        filters: ["employment", "date", "type", "justification"],
+      }),
+
+    create: (data) => {
+      const invalid = new Invalid()
+      validate(data, invalid, null)
+      invalid.throwIfAny()
+
+      const row: AttendanceEventRow = {
+        id: nextId("att"),
+        employment: "",
+        date: "",
+        type: "LATE_ARRIVAL",
+        minutes: null,
+        justification: "UNEXCUSED",
+        reason: "",
+      }
+      write(row, data)
+      db.attendance.push(row)
+      recordEvent(actorEmail(), "attendance.created", "attendance", row.id)
+      return serializeIncident(row)
+    },
+
+    update: (id, data) => {
+      const row = findById(db.attendance, id)
+      if (!row) throw notFound()
+      const invalid = new Invalid()
+      validate(data, invalid, row)
+      invalid.throwIfAny()
+
+      write(row, data)
+      recordEvent(actorEmail(), "attendance.updated", "attendance", row.id)
+      return serializeIncident(row)
+    },
+
+    remove: (id) => {
+      const row = findById(db.attendance, id)
+      if (!row) throw notFound()
+      removeById(db.attendance, row.id)
+      recordEvent(actorEmail(), "attendance.deleted", "attendance", row.id)
+    },
+  }
+}
 const COLLECTIONS: Record<string, () => Collection> = {
+  "attendance-records": attendanceRecords,
   people,
   "legal-entities": legalEntities,
   locations,
@@ -1046,18 +1239,6 @@ function dayBefore(date: string): string {
   const parsed = new Date(`${date}T00:00:00Z`)
   parsed.setUTCDate(parsed.getUTCDate() - 1)
   return parsed.toISOString().slice(0, 10)
-}
-
-/** True if `managerId` already reports, directly or not, to `employmentId`. */
-function reportsTo(managerId: string, employmentId: string): boolean {
-  let current: string | null = managerId
-  let guard = 0
-  while (current && guard < 50) {
-    if (current === employmentId) return true
-    current = openAssignmentFor(current)?.manager_employment ?? null
-    guard += 1
-  }
-  return false
 }
 
 function createAssignment(data: Body): MockResult {
@@ -1093,19 +1274,8 @@ function createAssignment(data: Body): MockResult {
     )
   }
 
-  const managerId = optional(data, "manager_employment", null)
-  if (managerId) {
-    if (managerId === employment.id) {
-      invalid.add("manager_employment", "Someone cannot report to themselves.")
-    } else if (!findById(db.employments, managerId)) {
-      invalid.add("manager_employment", "That employment does not exist.")
-    } else if (reportsTo(managerId, employment.id)) {
-      invalid.add(
-        "manager_employment",
-        "That manager already reports to this employment, which would create a cycle.",
-      )
-    }
-  }
+  // No manager is chosen here any more: moving into a unit *is* the change of
+  // reporting line, and cycles cannot happen because the org tree is acyclic.
   invalid.throwIfAny()
 
   // Close the seat they are leaving the day before the new one starts, so the
@@ -1119,7 +1289,6 @@ function createAssignment(data: Body): MockResult {
     id: nextId("as"),
     employment: employment.id,
     position: position.id,
-    manager_employment: managerId,
     is_primary: flag(data, "is_primary", true),
     fte_pct: text(data, "fte_pct", "100.00"),
     effective_from: effectiveFrom,
@@ -1211,6 +1380,22 @@ function route(
 
   if (head === "headcount" && method === "GET") {
     return { status: 200, body: headcount() }
+  }
+
+  if (head === "attendance" && method === "GET") {
+    // The window is the caller's: the screen computes day / week / month and
+    // sends explicit dates, so there is no server-side notion of "this week".
+    const to = params.get("to") ?? new Date().toISOString().slice(0, 10)
+    const from = params.get("from") ?? to
+    const list = (name: string) =>
+      params.get(name)?.split(",").filter(Boolean) ?? []
+    return {
+      status: 200,
+      body: attendanceSummary(from, to, {
+        orgUnits: list("org_unit"),
+        search: params.get("search") ?? "",
+      }),
+    }
   }
 
   if (head === "audit-events" && method === "GET") {

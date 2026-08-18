@@ -8,9 +8,37 @@ npm run dev
 ```
 
 That is the whole setup. You land on the dashboard already signed in, with a
-sample company behind it: **WinitLaw**, one legal entity in New York, 16 people
+sample company behind it: **WinitLaw**, one legal entity in New York, 19 people
 across C-Level, Management, Operations (Collections, CX, QA, IT) and Sales
 (NY, CA, NC, NJ).
+
+```
+Winit                      —            nobody sits here; a visual root
+└── C-Level                Ricardo      approvals stop here
+    └── Management         Renata
+        ├── Operations     Javier
+        │   ├── Collections  Andrés
+        │   ├── CX           Lucía
+        │   ├── QA           Paula
+        │   └── IT           —          falls through to Javier
+        └── Sales          Camila
+            └── NY · CA · NC · NJ  —    all fall through to Camila
+```
+
+**Reporting lines are derived from that column and nothing else.** There is no
+per-person manager field — see `managerOf` in `serializers.ts`.
+
+The org deliberately covers every shape a unit can take, because these are what
+break a chart:
+
+| Shape | In the seed |
+|---|---|
+| Manager at the top of the unit they run | Javier Montoya, in Operations |
+| Department-level member who manages nobody | Carolina Duarte, Operations Coordinator |
+| Deputy at department level, reporting to its manager | Sofía Delgado, Sales Team Lead |
+| Unit with no manager, so its people report a level up | IT, and all four sales territories |
+| Unit with no members and therefore no manager | Winit, the company node |
+| Department of one | Management |
 
 ---
 
@@ -88,17 +116,26 @@ compiler points at the line here that no longer fills it in.
 
 - Login, refresh, logout, `/auth/me/`, including the 401-then-refresh retry
 - Every list endpoint with `search`, `ordering` (`-` prefix for descending,
-  dotted paths for nested fields), `page`, `page_size`, and exact-match filters
-  on the serialised field of the same name — the stand-in for DRF's
-  `SearchFilter`, `OrderingFilter` and `filterset_fields`. Which fields each
-  collection accepts is declared next to its `list` in `routes.ts`
+  dotted paths for nested fields), `page`, `page_size`, and filters on the
+  serialised field of the same name — the stand-in for DRF's `SearchFilter`,
+  `OrderingFilter` and `filterset_fields`. Filters are **multi-value**:
+  `?status=ACTIVE,ON_LEAVE` keeps rows matching either, and separate parameters
+  AND together. Which fields each collection accepts is declared next to its
+  `list` in `routes.ts`
 - Create, edit and delete on all eight collections
 - The derived endpoints: `/directory/`, `/headcount/`, `/org-units/tree/`
-- Position assignment, and the employment lifecycle from spec §5.0
+- Position assignment, and the employment lifecycle: `ONBOARDING → TRAINING →
+  PROBATION → ACTIVE`, then `ON_LEAVE` / `SUSPENDED` / `OFFBOARDING` /
+  `TERMINATED`. `TRANSITIONS` in `serializers.ts` is the whole state machine
 - The invariants the dialogs are built to surface: unique codes, protected
-  deletes, no overlapping assignments, no reporting cycles, no org-unit cycles,
-  and transitions that have to be walked in order
+  deletes, no overlapping assignments, no org-unit cycles, a unit's manager
+  being one of its own direct members, and transitions that have to be walked
+  in order
 - Audit events, appended on every write
+- Attendance: `/attendance/?from=&to=` returns one day-strip per person grouped
+  by org unit. The incidents themselves are **generated**, not written out —
+  `attendanceFor()` in `seed.ts` derives them from a hash of employment id and
+  date, so they are stable across reloads but a month of them costs no file
 
 ## What is not
 
