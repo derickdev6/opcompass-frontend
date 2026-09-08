@@ -3,10 +3,13 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 
 function Table({ className, ...props }: React.ComponentProps<"table">) {
+  // Long lists scroll inside the card instead of pushing the page down, which
+  // keeps the toolbar above and the pagination below reachable without scrolling
+  // past every row.
   return (
     <div
       data-slot="table-container"
-      className="relative w-full overflow-x-auto"
+      className="relative w-full max-h-[600px] overflow-auto"
     >
       <table
         data-slot="table"
@@ -21,7 +24,7 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   return (
     <thead
       data-slot="table-header"
-      className={cn("[&_tr]:border-b", className)}
+      className={cn("sticky top-0 z-10 bg-card [&_tr]:border-b", className)}
       {...props}
     />
   )

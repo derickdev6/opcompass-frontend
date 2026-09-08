@@ -1,3 +1,4 @@
+import { Search } from "lucide-react"
 import { useState } from "react"
 
 import AttendanceDialog from "@/components/attendance/AttendanceDialog"
@@ -8,6 +9,7 @@ import FilterMenu from "@/components/list/FilterMenu"
 import ListToolbar from "@/components/list/ListToolbar"
 import SearchInput from "@/components/list/SearchInput"
 import PageHeader from "@/components/PageHeader"
+import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import {
@@ -113,7 +115,7 @@ export default function AttendancePage() {
     <>
       <PageHeader
         title="Attendance"
-        description="Late arrivals, early leaves and full-day absences — one bar per day. Hover a bar for the detail, or click a name to record one."
+        description="Late arrivals, early leaves and full-day absences — one bar per day. Hover a bar for the detail, or use the search icon on a row to record one."
       />
 
       <ListToolbar>
@@ -217,19 +219,14 @@ export default function AttendancePage() {
                       <TableHead className="w-[300px]">
                         {data.dates.length} {data.dates.length === 1 ? "day" : "days"}
                       </TableHead>
+                      <TableHead className="w-12" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {data.people.map((person) => (
                       <TableRow key={person.employment}>
                         <TableCell>
-                          <button
-                            type="button"
-                            onClick={() => setEditing(person)}
-                            className="text-left font-medium underline-offset-4 hover:underline"
-                          >
-                            {person.name}
-                          </button>
+                          <div className="font-medium">{person.name}</div>
                           <div className="text-xs text-muted-foreground">
                             {person.org_unit_name ?? "Unassigned"}
                           </div>
@@ -245,6 +242,17 @@ export default function AttendancePage() {
                         </TableCell>
                         <TableCell>
                           <DayStrip days={person.days} />
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8"
+                            aria-label={`Edit attendance for ${person.name}`}
+                            onClick={() => setEditing(person)}
+                          >
+                            <Search className="size-4" strokeWidth={3} aria-hidden />
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}
