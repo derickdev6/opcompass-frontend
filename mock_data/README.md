@@ -91,6 +91,7 @@ deployment still needs a real account** — see `TESTING.md` §2.
 | File | What it holds |
 |---|---|
 | `seed.ts` | **The sample data.** Start here to add or change records. |
+| `tenure.ts` | Six-month milestone maths. Imports nothing, so the seed and the serialisers can both use it. |
 | `rows.ts` | The row shapes — the "tables". |
 | `db.ts` | The mutable store, id generation, the audit-log append. |
 | `serializers.ts` | Rows → API response shapes, mirroring the DRF serializers. |
@@ -122,7 +123,7 @@ compiler points at the line here that no longer fills it in.
   `?status=ACTIVE,ON_LEAVE` keeps rows matching either, and separate parameters
   AND together. Which fields each collection accepts is declared next to its
   `list` in `routes.ts`
-- Create, edit and delete on all eight collections
+- Create, edit and delete on all eleven collections
 - The derived endpoints: `/directory/`, `/headcount/`, `/org-units/tree/`
 - Position assignment, and the employment lifecycle: `ONBOARDING → TRAINING →
   PROBATION → ACTIVE`, then `ON_LEAVE` / `SUSPENDED` / `OFFBOARDING` /
@@ -136,6 +137,16 @@ compiler points at the line here that no longer fills it in.
   by org unit. The incidents themselves are **generated**, not written out —
   `attendanceFor()` in `seed.ts` derives them from a hash of employment id and
   date, so they are stable across reloads but a month of them costs no file
+
+- Appraisals, in two halves:
+  - `/tenure/` — the six-month bonus. The **schedule is derived** from each hire
+    date on every read (`tenure.ts`), so only payments are stored and correcting
+    a start date moves the whole schedule with it. `tenureBonusesFor()` in
+    `seed.ts` pays everything more than a quarter overdue, leaving recent
+    milestones outstanding; `emp-5` and `emp-11` are in arrears from the start
+    so the `DUE` state has rows
+  - `/raffles/` and `/raffle-entries/` — events with participants who each hold
+    a **variable number of tickets**. Deleting a raffle deletes its entries
 
 ## What is not
 

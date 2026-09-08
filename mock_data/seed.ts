@@ -29,7 +29,13 @@
  *               └── NY · CA · NC · NJ  —    all fall through to Camila
  */
 
-import type { AttendanceEventRow, EmploymentRow, MockDb } from "./rows"
+import type {
+  AttendanceEventRow,
+  EmploymentRow,
+  MockDb,
+  TenureBonusRow,
+} from "./rows"
+import { addMonths, milestoneDate, milestonesReached } from "./tenure"
 
 export function seed(): MockDb {
   const db: MockDb = {
@@ -1696,10 +1702,99 @@ export function seed(): MockDb {
     // Filled in below: generated rather than written out, because a month of
     // incidents across nineteen people is a thousand lines of noise.
     attendance: [],
+    raffles: [
+      {
+        id: "rf-1",
+        name: "Summer gift card draw",
+        date: "2026-07-31",
+        description:
+          "One $250 gift card. A ticket for every full month worked since January, plus one for anyone with no unexcused absence in the quarter.",
+      },
+      {
+        id: "rf-2",
+        name: "Back-to-school raffle",
+        date: "2026-08-28",
+        description:
+          "Two tablet bundles for people with school-age children. One ticket each; a second for anyone who covered a weekend shift in August.",
+      },
+      {
+        id: "rf-3",
+        name: "Quarter close prize draw",
+        date: "2026-09-25",
+        description:
+          "Long weekend for one. Tickets are earned by collections target: one at 80% of quota, three at 100%, five above it.",
+      },
+    ],
+    raffleEntries: [
+      // Uneven on purpose: the whole point of the feature is that the number
+      // of tickets differs per participant and per raffle.
+      { id: "re-1", raffle: "rf-1", employment: "emp-1", tickets: 3 },
+      { id: "re-2", raffle: "rf-1", employment: "emp-2", tickets: 3 },
+      { id: "re-3", raffle: "rf-1", employment: "emp-3", tickets: 2 },
+      { id: "re-4", raffle: "rf-1", employment: "emp-5", tickets: 5 },
+      { id: "re-5", raffle: "rf-1", employment: "emp-8", tickets: 1 },
+      { id: "re-6", raffle: "rf-1", employment: "emp-9", tickets: 4 },
+      { id: "re-7", raffle: "rf-1", employment: "emp-12", tickets: 2 },
+      { id: "re-8", raffle: "rf-2", employment: "emp-3", tickets: 1 },
+      { id: "re-9", raffle: "rf-2", employment: "emp-9", tickets: 2 },
+      { id: "re-10", raffle: "rf-2", employment: "emp-10", tickets: 1 },
+      { id: "re-11", raffle: "rf-2", employment: "emp-11", tickets: 2 },
+      { id: "re-12", raffle: "rf-2", employment: "emp-18", tickets: 1 },
+      { id: "re-13", raffle: "rf-3", employment: "emp-5", tickets: 3 },
+      { id: "re-14", raffle: "rf-3", employment: "emp-8", tickets: 5 },
+      { id: "re-15", raffle: "rf-3", employment: "emp-12", tickets: 1 },
+      { id: "re-16", raffle: "rf-3", employment: "emp-13", tickets: 3 },
+    ],
+    tenureBonuses: [],
+
   }
 
   db.attendance = attendanceFor(db.employments)
+  db.tenureBonuses = tenureBonusesFor(db.employments)
   return db
+}
+
+// ---------------------------------------------------------------------------
+// Tenure bonuses
+// ---------------------------------------------------------------------------
+
+/**
+ * The bonuses already handed over.
+ *
+ * Anything more than a quarter past its due date is paid, so the most recent
+ * milestones stay outstanding and the "due" state has rows to show. Two people
+ * are deliberately in arrears from the start — a screen that can only render
+ * the happy path is not much of a screen.
+ */
+function tenureBonusesFor(employments: EmploymentRow[]): TenureBonusRow[] {
+  const today = isoDate(new Date())
+  const settled = addMonths(today, -3)
+  const inArrears = new Set(["emp-5", "emp-11"])
+  const rows: TenureBonusRow[] = []
+  let sequence = 0
+
+  for (const employment of employments) {
+    if (employment.status === "TERMINATED") continue
+    if (inArrears.has(employment.id)) continue
+
+    const reached = milestonesReached(employment.hire_date, today)
+    for (let milestone = 1; milestone <= reached; milestone += 1) {
+      const due = milestoneDate(employment.hire_date, milestone)
+      if (due > settled) continue
+      sequence += 1
+      rows.push({
+        id: `tb-${sequence}`,
+        employment: employment.id,
+        milestone,
+        paid_on: due,
+        // Grows with service, which is rather the point of a tenure bonus.
+        amount: (250 + milestone * 25).toFixed(2),
+        note: "",
+      })
+    }
+  }
+
+  return rows
 }
 
 // ---------------------------------------------------------------------------

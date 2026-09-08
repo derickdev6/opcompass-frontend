@@ -142,6 +142,49 @@ export interface AttendanceEventRow {
   reason: string
 }
 
+/**
+ * A raffle — a one-off event people hold tickets in.
+ *
+ * Who takes part changes from one raffle to the next, so participants are rows
+ * of their own rather than a list stored on here.
+ */
+export interface RaffleRow {
+  id: string
+  name: string
+  /** YYYY-MM-DD. The day it is drawn. */
+  date: string
+  /** Free text: the rules, the prize, whatever the announcement said. */
+  description: string
+}
+
+/** One person's stake in one raffle. */
+export interface RaffleEntryRow {
+  id: string
+  raffle: string
+  employment: string
+  /** How many entries they hold. Not everyone gets one. */
+  tickets: number
+}
+
+/**
+ * A six-month tenure bonus that was actually handed over.
+ *
+ * The milestones themselves are derived from the hire date, never stored — so
+ * the schedule cannot drift out of step with it, and only the payment is a
+ * record.
+ */
+export interface TenureBonusRow {
+  id: string
+  employment: string
+  /** Which milestone: 1 is six months, 2 is a year, and so on. */
+  milestone: number
+  /** YYYY-MM-DD. */
+  paid_on: string
+  /** Decimal string, or null when the bonus was not a cash amount. */
+  amount: string | null
+  note: string
+}
+
 export interface MockDb {
   people: PersonRow[]
   legalEntities: LegalEntityRow[]
@@ -154,4 +197,7 @@ export interface MockDb {
   users: UserRow[]
   auditEvents: AuditEventRow[]
   attendance: AttendanceEventRow[]
+  raffles: RaffleRow[]
+  raffleEntries: RaffleEntryRow[]
+  tenureBonuses: TenureBonusRow[]
 }

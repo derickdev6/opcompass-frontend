@@ -22,6 +22,10 @@ import type {
   Person,
   Position,
   PositionAssignment,
+  Raffle,
+  RaffleEntry,
+  TenureMilestone,
+  TenureStanding,
   UserAccount,
 } from "@/lib/types"
 
@@ -33,8 +37,11 @@ import type {
   OrgUnitRow,
   PersonRow,
   PositionRow,
+  RaffleEntryRow,
+  RaffleRow,
   UserRow,
 } from "./rows"
+import { milestoneDate, milestonesReached, monthsOfService } from "./tenure"
 
 /**
  * The employment lifecycle. A transition that is not listed here is rejected:
@@ -685,4 +692,95 @@ export function holidayOn(date: string): string | null {
   const year = Number(date.slice(0, 4))
   if (!Number.isFinite(year)) return null
   return holidaysFor(year).get(date) ?? null
+}
+
+// ---------------------------------------------------------------------------
+// Appraisals — tenure bonuses and raffles
+// ---------------------------------------------------------------------------
+
+export function serializeRaffle(row: RaffleRow): Raffle {
+  const entries = db.raffleEntries.filter((entry) => entry.raffle === row.id)
+  return {
+    id: row.id,
+    name: row.name,
+    date: row.date,
+    description: row.description,
+    participant_count: entries.length,
+    // The denominator for everyone's odds, so the list can show the size of
+    // the draw without fetching every entry.
+    total_tickets: entries.reduce((sum, entry) => sum + entry.tickets, 0),
+  }
+}
+
+export function serializeRaffleEntry(row: RaffleEntryRow): RaffleEntry {
+  const employment = findById(db.employments, row.employment)
+  const person = findById(db.people, employment?.person)
+  const unit = unitOf(row.employment)
+  return {
+    id: row.id,
+    raffle: row.raffle,
+    employment: row.employment,
+    employee_code: employment?.employee_code ?? "—",
+    person_name: person ? displayName(person) : "—",
+    org_unit_name: unit?.name ?? null,
+    tickets: row.tickets,
+  }
+}
+
+/**
+ * One person's tenure standing.
+ *
+ * The milestones are computed from the hire date every time rather than read
+ * from a table, so nothing has to be back-filled when someone's start date is
+ * corrected — the schedule simply moves with it. The only stored rows are the
+ * payments, which are matched onto the schedule by milestone number.
+ */
+function serializeTenure(employment: EmploymentRow, today: string): TenureStanding {
+  const person = findById(db.people, employment.person)
+  const unit = unitOf(employment.id)
+  const paid = db.tenureBonuses.filter((row) => row.employment === employment.id)
+  const reached = milestonesReached(employment.hire_date, today)
+
+  // Every milestone reached, plus the one coming, so the dialog can show what
+  // is next without a second request.
+  const milestones: TenureMilestone[] = []
+  for (let milestone = 1; milestone <= reached + 1; milestone += 1) {
+    const bonus = paid.find((row) => row.milestone === milestone) ?? null
+    milestones.push({
+      milestone,
+      due_date: milestoneDate(employment.hire_date, milestone),
+      reached: milestone <= reached,
+      paid: bonus !== null,
+      bonus_id: bonus?.id ?? null,
+      paid_on: bonus?.paid_on ?? null,
+      amount: bonus?.amount ?? null,
+      note: bonus?.note ?? "",
+    })
+  }
+
+  const paidReached = milestones.filter((row) => row.reached && row.paid).length
+  const outstanding = reached - paidReached
+
+  return {
+    employment: employment.id,
+    employee_code: employment.employee_code,
+    name: person ? displayName(person) : "—",
+    org_unit_name: unit?.name ?? null,
+    status: employment.status,
+    hire_date: employment.hire_date,
+    months_of_service: monthsOfService(employment.hire_date, today),
+    milestones_reached: reached,
+    milestones_paid: paidReached,
+    outstanding,
+    bonus_status: outstanding > 0 ? "DUE" : "UP_TO_DATE",
+    next_due: milestoneDate(employment.hire_date, reached + 1),
+    milestones,
+  }
+}
+
+/** Everyone still on the books, with their tenure standing. */
+export function tenureStandings(today: string): TenureStanding[] {
+  return db.employments
+    .filter(isCurrent)
+    .map((employment) => serializeTenure(employment, today))
 }

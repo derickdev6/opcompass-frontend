@@ -29,8 +29,12 @@ import type {
   EmploymentRow,
   OrgUnitRow,
   PersonRow,
+  RaffleEntryRow,
+  RaffleRow,
+  TenureBonusRow,
   UserRow,
 } from "./rows"
+import { milestoneDate, milestonesReached } from "./tenure"
 import {
   TRANSITIONS,
   attendanceSummary,
@@ -44,7 +48,10 @@ import {
   serializePerson,
   serializeIncident,
   serializePosition,
+  serializeRaffle,
+  serializeRaffleEntry,
   snapToStep,
+  tenureStandings,
   serializeSessionUser,
   serializeUserAccount,
 } from "./serializers"
@@ -1215,8 +1222,218 @@ function attendanceRecords(): Collection {
     },
   }
 }
+// ---------------------------------------------------------------------------
+// Appraisals
+// ---------------------------------------------------------------------------
+
+function raffles(): Collection {
+  const validate = (data: Body, invalid: Invalid) => {
+    invalid.require(data, "name", "date")
+  }
+
+  return {
+    list: (params) =>
+      listOf(db.raffles, serializeRaffle, params, {
+        search: ["name", "description"],
+      }),
+
+    create: (data) => {
+      const invalid = new Invalid()
+      validate(data, invalid)
+      invalid.throwIfAny()
+
+      const row: RaffleRow = {
+        id: nextId("rf"),
+        name: text(data, "name"),
+        date: text(data, "date"),
+        description: text(data, "description"),
+      }
+      db.raffles.push(row)
+      recordEvent(actorEmail(), "raffle.created", "raffle", row.id)
+      return serializeRaffle(row)
+    },
+
+    update: (id, data) => {
+      const row = findById(db.raffles, id)
+      if (!row) throw notFound()
+      const invalid = new Invalid()
+      validate(data, invalid)
+      invalid.throwIfAny()
+
+      row.name = text(data, "name", row.name)
+      row.date = text(data, "date", row.date)
+      row.description = text(data, "description", row.description)
+      recordEvent(actorEmail(), "raffle.updated", "raffle", row.id)
+      return serializeRaffle(row)
+    },
+
+    remove: (id) => {
+      const row = findById(db.raffles, id)
+      if (!row) throw notFound()
+      // The entries mean nothing without the draw they belong to, so they go
+      // with it rather than being left behind as orphans.
+      db.raffleEntries = db.raffleEntries.filter((entry) => entry.raffle !== id)
+      removeById(db.raffles, row.id)
+      recordEvent(actorEmail(), "raffle.deleted", "raffle", row.id)
+    },
+  }
+}
+
+function raffleEntries(): Collection {
+  const validate = (data: Body, invalid: Invalid, self: RaffleEntryRow | null) => {
+    invalid.require(data, "raffle", "employment")
+
+    const raffleId = text(data, "raffle")
+    if (raffleId && !findById(db.raffles, raffleId)) {
+      invalid.add("raffle", "That raffle does not exist.")
+    }
+
+    const employmentId = text(data, "employment")
+    const employment = findById(db.employments, employmentId)
+    if (employmentId && !employment) {
+      invalid.add("employment", "That employment does not exist.")
+    } else if (employment && !isCurrent(employment)) {
+      invalid.add("employment", "That employment has ended.")
+    }
+
+    // One row per person per raffle. Five tickets is a count on one row, not
+    // five rows — otherwise changing it means hunting down every one.
+    if (
+      raffleId &&
+      employmentId &&
+      db.raffleEntries.some(
+        (entry) =>
+          entry.raffle === raffleId &&
+          entry.employment === employmentId &&
+          entry.id !== self?.id,
+      )
+    ) {
+      invalid.add(
+        "employment",
+        "They are already in this raffle. Edit their tickets instead.",
+      )
+    }
+
+    if (data.tickets !== undefined) {
+      const tickets = Number(data.tickets)
+      if (!Number.isInteger(tickets) || tickets < 1) {
+        invalid.add("tickets", "At least one ticket.")
+      } else if (tickets > 1000) {
+        invalid.add("tickets", "That is more tickets than any draw needs.")
+      }
+    }
+  }
+
+  return {
+    list: (params) =>
+      listOf(db.raffleEntries, serializeRaffleEntry, params, {
+        search: ["person_name", "employee_code"],
+        filters: ["raffle", "employment"],
+      }),
+
+    create: (data) => {
+      const invalid = new Invalid()
+      validate(data, invalid, null)
+      invalid.throwIfAny()
+
+      const row: RaffleEntryRow = {
+        id: nextId("re"),
+        raffle: text(data, "raffle"),
+        employment: text(data, "employment"),
+        tickets: count(data, "tickets", 1),
+      }
+      db.raffleEntries.push(row)
+      recordEvent(actorEmail(), "raffle.entry_added", "raffle", row.raffle)
+      return serializeRaffleEntry(row)
+    },
+
+    update: (id, data) => {
+      const row = findById(db.raffleEntries, id)
+      if (!row) throw notFound()
+      const invalid = new Invalid()
+      validate({ raffle: row.raffle, employment: row.employment, ...data }, invalid, row)
+      invalid.throwIfAny()
+
+      row.tickets = count(data, "tickets", row.tickets)
+      recordEvent(actorEmail(), "raffle.entry_updated", "raffle", row.raffle)
+      return serializeRaffleEntry(row)
+    },
+
+    remove: (id) => {
+      const row = findById(db.raffleEntries, id)
+      if (!row) throw notFound()
+      removeById(db.raffleEntries, row.id)
+      recordEvent(actorEmail(), "raffle.entry_removed", "raffle", row.raffle)
+    },
+  }
+}
+
+function tenureBonuses(): Collection {
+  return {
+    list: (params) =>
+      listOf(db.tenureBonuses, (row) => row, params, {
+        filters: ["employment"],
+      }),
+
+    create: (data) => {
+      const invalid = new Invalid()
+      invalid.require(data, "employment", "milestone", "paid_on")
+
+      const employmentId = text(data, "employment")
+      const employment = findById(db.employments, employmentId)
+      if (employmentId && !employment) {
+        invalid.add("employment", "That employment does not exist.")
+      }
+
+      const milestone = Number(data.milestone)
+      if (!Number.isInteger(milestone) || milestone < 1) {
+        invalid.add("milestone", "Not a milestone.")
+      } else if (employment) {
+        // The schedule is the authority on what can be paid, not the form: a
+        // milestone nobody has reached yet cannot be handed over early.
+        const today = new Date().toISOString().slice(0, 10)
+        if (milestone > milestonesReached(employment.hire_date, today)) {
+          const due = milestoneDate(employment.hire_date, milestone)
+          invalid.add("milestone", `Not reached yet — that one falls due on ${due}.`)
+        }
+        if (
+          db.tenureBonuses.some(
+            (row) => row.employment === employmentId && row.milestone === milestone,
+          )
+        ) {
+          invalid.add("milestone", "That bonus is already recorded.")
+        }
+      }
+      invalid.throwIfAny()
+
+      const row: TenureBonusRow = {
+        id: nextId("tb"),
+        employment: employmentId,
+        milestone,
+        paid_on: text(data, "paid_on"),
+        amount: optional(data, "amount", null),
+        note: text(data, "note"),
+      }
+      db.tenureBonuses.push(row)
+      recordEvent(actorEmail(), "tenure_bonus.recorded", "employment", row.employment)
+      return row
+    },
+
+    remove: (id) => {
+      const row = findById(db.tenureBonuses, id)
+      if (!row) throw notFound()
+      removeById(db.tenureBonuses, row.id)
+      recordEvent(actorEmail(), "tenure_bonus.removed", "employment", row.employment)
+    },
+  }
+}
+
+
 const COLLECTIONS: Record<string, () => Collection> = {
   "attendance-records": attendanceRecords,
+  raffles,
+  "raffle-entries": raffleEntries,
+  "tenure-bonuses": tenureBonuses,
   people,
   "legal-entities": legalEntities,
   locations,
@@ -1396,6 +1613,19 @@ function route(
       body: attendanceSummary(from, to, {
         orgUnits: list("org_unit"),
         search: params.get("search") ?? "",
+      }),
+    }
+  }
+
+  if (head === "tenure" && method === "GET") {
+    // Recomputed per request from each hire date, so "today" is always the
+    // server's rather than something the caller can shift.
+    const today = new Date().toISOString().slice(0, 10)
+    return {
+      status: 200,
+      body: listOf(tenureStandings(today), (row) => row, params, {
+        search: ["name", "employee_code"],
+        filters: ["bonus_status", "status"],
       }),
     }
   }

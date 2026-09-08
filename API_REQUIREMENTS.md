@@ -515,6 +515,96 @@ form offers only the six steps, and the server snaps whatever it receives up to
 the next one, so the rule holds for any caller rather than depending on the
 form. The bracket itself is never sent.
 
+## 4.7 Appraisals — **new endpoints, nothing exists yet**
+
+Two unrelated things share the Appraisals screen because they are both "what the
+company gives back": a bonus that recurs on a schedule, and one-off prize draws.
+
+### The six-month tenure bonus: `GET /tenure/`
+
+**The schedule is derived, never stored.** Milestone `n` falls on
+`hire_date + 6n months`, so correcting somebody's start date moves their whole
+schedule with it and nothing has to be back-filled. The only rows in the
+database are the payments.
+
+Month arithmetic clamps to the end of the landing month: hired on 31 August,
+the milestone lands on 28 February, not on 3 March. Getting this wrong walks
+the anniversary forward a day every leap year.
+
+One row per current employment (`status != TERMINATED`), paginated like every
+other list.
+
+| Field | Notes |
+|---|---|
+| `employment`, `employee_code`, `name`, `org_unit_name` | The person |
+| `hire_date` | What the whole schedule is computed from |
+| `months_of_service` | Whole months, for the "6 y 6 m" reading |
+| `milestones_reached` | How many have fallen due on or before today |
+| `milestones_paid` | How many of those have a payment recorded |
+| `outstanding` | `reached - paid`. The number the screen actually acts on |
+| `bonus_status` | `DUE` when `outstanding > 0`, else `UP_TO_DATE`. Filterable |
+| `next_due` | Date of the next milestone not yet reached |
+| `milestones[]` | Every reached milestone plus the next one: `milestone`, `due_date`, `reached`, `paid`, `bonus_id`, `paid_on`, `amount`, `note` |
+
+`search` matches name or employee code; `bonus_status` and `status` filter.
+
+Embedding `milestones[]` in the list response is deliberate — the dialog needs
+the whole history and would otherwise be a second request per person. Ten years
+of service is twenty-one small objects, which is cheaper than the round trip.
+
+### Recording payments: `/tenure-bonuses/`
+
+`GET` (filter by `employment`), `POST`, `DELETE`. No `PATCH` — an incorrect
+bonus is deleted and re-recorded, so there is no partial-update path to guard.
+
+| Field | Notes |
+|---|---|
+| `employment` | FK |
+| `milestone` | Integer ≥ 1. `1` is six months, `2` is a year |
+| `paid_on` | `YYYY-MM-DD`, the day it was actually handed over — **not** the due date |
+| `amount` | Decimal string, nullable: not every bonus is cash |
+| `note` | Free text |
+
+| Rule | Field | Message |
+|---|---|---|
+| Cannot pay a milestone nobody has reached | `milestone` | "Not reached yet — that one falls due on 2026-09-16." |
+| One payment per milestone | `milestone` | "That bonus is already recorded." |
+
+**The schedule is the authority, not the form.** The reached check belongs on
+the server: the client computes nothing about which milestones exist.
+
+### Raffles: `/raffles/` and `/raffle-entries/`
+
+A raffle is an event — `name`, `date`, `description` (the rules and the prize).
+Full CRUD. The list adds two rollups so the table need not fetch every entry:
+
+| Field | Notes |
+|---|---|
+| `participant_count` | Rows in `/raffle-entries/` for this raffle |
+| `total_tickets` | Their tickets summed — the denominator for everyone's odds |
+
+**`DELETE /raffles/{id}/` deletes its entries too.** An entry has no meaning
+without the draw it belongs to, so orphans are not left behind.
+
+Participants vary from one raffle to the next, which is the whole point of the
+feature, so they are their own collection rather than a list on the raffle.
+
+| Field | Notes |
+|---|---|
+| `raffle`, `employment` | FKs. `GET` filters on either |
+| `tickets` | Integer ≥ 1. How many entries this person holds |
+| `employee_code`, `person_name`, `org_unit_name` | Denormalised for the table |
+
+| Rule | Field | Message |
+|---|---|---|
+| One row per person per raffle | `employment` | "They are already in this raffle. Edit their tickets instead." |
+| A leaver cannot be entered | `employment` | "That employment has ended." |
+| At least one ticket | `tickets` | "At least one ticket." |
+| Sanity cap at 1000 | `tickets` | "That is more tickets than any draw needs." |
+
+**Tickets are a count on one row, not one row per ticket.** Five tickets is
+`tickets: 5`; five rows would make changing the number a hunt.
+
 ## 5. Invariants the UI is built to surface
 
 Each of these has a visible error path in the app. If the server stops enforcing

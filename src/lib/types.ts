@@ -274,3 +274,67 @@ export interface AttendanceSummary {
     justified: number
   }
 }
+
+// ---------------------------------------------------------------------------
+// Appraisals
+// ---------------------------------------------------------------------------
+
+/** A one-off prize draw. Participants and their ticket counts live separately. */
+export interface Raffle {
+  id: string
+  name: string
+  /** YYYY-MM-DD. */
+  date: string
+  description: string
+  participant_count: number
+  total_tickets: number
+}
+
+export interface RaffleEntry {
+  id: string
+  raffle: string
+  employment: string
+  employee_code: string
+  person_name: string
+  org_unit_name: string | null
+  /** How many entries this person holds. Always at least one. */
+  tickets: number
+}
+
+/** One six-month step, whether or not it has been reached or paid. */
+export interface TenureMilestone {
+  /** 1 is six months, 2 is a year, and so on. */
+  milestone: number
+  /** YYYY-MM-DD. */
+  due_date: string
+  reached: boolean
+  paid: boolean
+  bonus_id: string | null
+  paid_on: string | null
+  amount: string | null
+  note: string
+}
+
+/**
+ * Where one person stands on the six-month bonus.
+ *
+ * Derived from the hire date on every read — only the payments are stored, so
+ * correcting a start date moves the whole schedule with it.
+ */
+export interface TenureStanding {
+  employment: string
+  employee_code: string
+  name: string
+  org_unit_name: string | null
+  status: string
+  hire_date: string
+  months_of_service: number
+  milestones_reached: number
+  milestones_paid: number
+  /** Reached but not yet paid. */
+  outstanding: number
+  bonus_status: "DUE" | "UP_TO_DATE"
+  /** When the next unreached milestone falls. */
+  next_due: string
+  milestones: TenureMilestone[]
+}
