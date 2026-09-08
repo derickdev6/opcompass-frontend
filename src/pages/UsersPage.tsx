@@ -114,6 +114,7 @@ export default function UsersPage() {
           allLabel="All statuses"
           values={params.filters.status}
           onChange={(values) => params.setFilter("status", values)}
+          sorted={false}
           options={enumOptions(STATUSES)}
         />
         <FilterMenu
@@ -299,6 +300,7 @@ export default function UsersPage() {
                 errors={errors}
                 value={form.status}
                 onChange={(status) => setForm((f) => ({ ...f, status }))}
+                sorted={false}
                 options={enumOptions(STATUSES)}
               />
               <SelectField
@@ -341,6 +343,7 @@ export default function UsersPage() {
               errors={errors}
               value={statusForm.status}
               onChange={(status) => setStatusForm((f) => ({ ...f, status }))}
+              sorted={false}
               options={enumOptions(STATUSES)}
             />
             <TextField

@@ -105,10 +105,26 @@ export interface Option {
   label: string
 }
 
+/**
+ * Every dropdown lists its options alphabetically, so a name is found the same
+ * way in all of them. Sorting happens where the options are rendered rather
+ * than at each call site, so a new selector cannot forget to do it.
+ *
+ * `sensitivity: "base"` files accented names with their unaccented spelling —
+ * Pena and Peña land together — and `numeric` keeps codes like OPS-2 before
+ * OPS-10.
+ */
+export function sortOptions(options: Option[]): Option[] {
+  return [...options].sort((a, b) =>
+    a.label.localeCompare(b.label, undefined, { sensitivity: "base", numeric: true }),
+  )
+}
+
 export function SelectField({
   value,
   onChange,
   options,
+  sorted = true,
   placeholder = "Select…",
   allowEmpty = false,
   ...base
@@ -116,6 +132,8 @@ export function SelectField({
   value: string
   onChange: (value: string) => void
   options: Option[]
+  /** Off for scales whose own order carries meaning, like seniority. */
+  sorted?: boolean
   placeholder?: string
   allowEmpty?: boolean
 }) {
@@ -137,7 +155,7 @@ export function SelectField({
         </SelectTrigger>
         <SelectContent>
           {allowEmpty && <SelectItem value={NONE}>— None —</SelectItem>}
-          {options.map((option) => (
+          {(sorted ? sortOptions(options) : options).map((option) => (
             <SelectItem key={option.value} value={option.value}>
               {option.label}
             </SelectItem>

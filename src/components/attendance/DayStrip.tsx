@@ -50,7 +50,7 @@ export const BUCKET_LABEL: Record<AttendanceBucketKey, string> = {
   H1: "up to 1 h",
   H2: "up to 2 h",
   H3: "up to 3 h",
-  H4: "over 3 h",
+  H4: "3 – 4 h",
 }
 
 type AttendanceBucketKey = NonNullable<AttendanceIncident["bucket"]>
@@ -91,7 +91,7 @@ function longDate(date: string): string {
 /** "47 min (up to 1 h)", or "the whole day" when nothing was worked. */
 function extent(incident: AttendanceIncident): string {
   if (incident.minutes === null || incident.bucket === null) return "the whole day"
-  return `${incident.minutes} min (${BUCKET_LABEL[incident.bucket]})`
+  return BUCKET_LABEL[incident.bucket]
 }
 
 export default function DayStrip({ days }: { days: AttendanceDay[] }) {

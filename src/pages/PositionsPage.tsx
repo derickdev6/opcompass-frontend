@@ -121,6 +121,7 @@ export default function PositionsPage() {
           allLabel="All statuses"
           values={params.filters.status}
           onChange={(values) => params.setFilter("status", values)}
+          sorted={false}
           options={enumOptions(STATUSES)}
         />
         <FilterMenu
@@ -128,6 +129,7 @@ export default function PositionsPage() {
           allLabel="All seniorities"
           values={params.filters.seniority}
           onChange={(values) => params.setFilter("seniority", values)}
+          sorted={false}
           options={enumOptions(SENIORITIES)}
         />
       </ListToolbar>
@@ -288,6 +290,7 @@ export default function PositionsPage() {
                 errors={errors}
                 value={form.seniority}
                 onChange={(seniority) => setForm((f) => ({ ...f, seniority }))}
+                sorted={false}
                 options={enumOptions(SENIORITIES)}
               />
             </FieldRow>
@@ -298,6 +301,7 @@ export default function PositionsPage() {
                 errors={errors}
                 value={form.status}
                 onChange={(status) => setForm((f) => ({ ...f, status }))}
+                sorted={false}
                 options={enumOptions(STATUSES)}
               />
               <TextField

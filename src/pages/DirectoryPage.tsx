@@ -60,6 +60,7 @@ export default function DirectoryPage() {
           allLabel="All statuses"
           values={params.filters.status}
           onChange={(values) => params.setFilter("status", values)}
+          sorted={false}
           options={enumOptions(STATUSES)}
         />
         <FilterMenu

@@ -162,6 +162,7 @@ export default function EmploymentsPage() {
           allLabel="All statuses"
           values={params.filters.status}
           onChange={(values) => params.setFilter("status", values)}
+          sorted={false}
           options={enumOptions(STATUSES)}
         />
         <FilterMenu
@@ -467,6 +468,7 @@ export default function EmploymentsPage() {
               errors={errors}
               value={transitionForm.to_status}
               onChange={(to_status) => setTransitionForm((f) => ({ ...f, to_status }))}
+              sorted={false}
               options={enumOptions(transitioning?.allowed_transitions ?? [])}
             />
             <TextField

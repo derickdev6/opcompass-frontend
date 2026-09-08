@@ -472,6 +472,7 @@ export default function NewHireDialog({
                       onChange={(seniority) =>
                         set("position", { ...draft.position, seniority })
                       }
+                      sorted={false}
                       options={enumOptions(SENIORITIES)}
                     />
                     <TextField

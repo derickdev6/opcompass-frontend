@@ -1,5 +1,6 @@
 import { Check, ChevronDown } from "lucide-react"
 
+import { sortOptions } from "@/components/form/Field"
 import type { Option } from "@/components/form/Field"
 import { Button } from "@/components/ui/button"
 import {
@@ -26,6 +27,7 @@ export default function FilterMenu({
   label,
   allLabel,
   options,
+  sorted = true,
   values,
   onChange,
 }: {
@@ -33,6 +35,8 @@ export default function FilterMenu({
   label: string
   allLabel?: string
   options: Option[]
+  /** Off for scales whose own order carries meaning, like seniority. */
+  sorted?: boolean
   values: string[]
   onChange: (values: string[]) => void
 }) {
@@ -72,7 +76,7 @@ export default function FilterMenu({
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="start" className="max-h-80 w-56 overflow-y-auto">
-        {options.map((option) => (
+        {(sorted ? sortOptions(options) : options).map((option) => (
           <DropdownMenuCheckboxItem
             key={option.value}
             checked={values.includes(option.value)}

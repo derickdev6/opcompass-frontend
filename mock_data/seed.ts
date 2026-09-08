@@ -1744,8 +1744,8 @@ const ABSENCE_REASONS: Record<string, string[]> = {
   JUSTIFIED: ["Medical certificate", "Bereavement leave", "Jury duty"],
 }
 
-/** Minutes for a bracket, so every one of the six is represented. */
-const MINUTE_STEPS = [12, 24, 47, 95, 160, 220]
+/** Every incident lands on one of the six steps; there are no figures between. */
+const MINUTE_STEPS = [15, 30, 60, 120, 180, 240]
 
 function isoDate(value: Date): string {
   return value.toISOString().slice(0, 10)
@@ -1800,7 +1800,7 @@ function attendanceFor(employments: EmploymentRow[]): AttendanceEventRow[] {
           employment: employment.id,
           date,
           type,
-          minutes: MINUTE_STEPS[Math.floor(roll(`${key}:mins`) * MINUTE_STEPS.length)] ?? 12,
+          minutes: MINUTE_STEPS[Math.floor(roll(`${key}:mins`) * MINUTE_STEPS.length)] ?? 15,
           justification,
           reason: pool[Math.floor(roll(`${key}:why`) * pool.length)] ?? pool[0]!,
         })
@@ -1849,7 +1849,7 @@ function attendanceFor(employments: EmploymentRow[]): AttendanceEventRow[] {
               ? "EXCUSED"
               : "JUSTIFIED"
         const minutes =
-          MINUTE_STEPS[Math.floor(roll(`${key}:mins`) * MINUTE_STEPS.length)] ?? 12
+          MINUTE_STEPS[Math.floor(roll(`${key}:mins`) * MINUTE_STEPS.length)] ?? 15
         const pool = (type === "LATE_ARRIVAL" ? LATE_REASONS : EARLY_REASONS)[
           justification
         ]!

@@ -454,7 +454,7 @@ shape is `AttendanceSummary` in `src/lib/types.ts` — `people`, each with one
 | `employment` | FK |
 | `date` | The working day it belongs to |
 | `type` | `LATE_ARRIVAL` \| `EARLY_LEAVE` \| `ABSENCE` |
-| `minutes` | The real figure, **null for `ABSENCE`**. The six brackets (`M15` ≤ 15 min, `M30` ≤ 30, `H1` ≤ 60, `H2` ≤ 120, `H3` ≤ 180, `H4` above) are **derived**, never stored — rebracketing later must not need a migration |
+| `minutes` | One of the six steps — `15`, `30`, `60`, `120`, `180`, `240` — and **null for `ABSENCE`**. Time is not tracked to the exact minute: the server rounds **up** to the next step on write, so 0–15 stores 15, 16–30 stores 30, and anything above 180 stores 240. The bracket (`M15`, `M30`, `H1`, `H2`, `H3`, `H4`) is **derived** from it, never stored |
 | `justification` | `UNEXCUSED` \| `EXCUSED` \| `JUSTIFIED`, on all three types |
 | `reason` | Free text, shown in the tooltip |
 
@@ -506,13 +506,14 @@ Validation the UI has error paths for, all ❌ server-side:
 | One of each type per day | `type` | "That is already recorded for this day. Edit it instead." |
 | An absence cannot sit beside a partial incident | `type` | "This day already has a late arrival or early leave recorded…" |
 | …and vice versa | `type` | "This day is already recorded as a full-day absence." |
-| A partial incident needs minutes | `minutes` | "Enter how many minutes." |
+| A partial incident needs a duration | `minutes` | "Enter how many minutes." |
 | Minutes below a full day | `minutes` | "That is a whole day. Record an absence instead." |
 | Inside the employment's dates | `date` | "Before this employment started on 2024-03-04." |
 
 `minutes` must be **null** for `ABSENCE` and a positive number otherwise. The
-form offers the six brackets as a convenience and writes a representative
-figure into `minutes`; the bracket itself is never sent.
+form offers only the six steps, and the server snaps whatever it receives up to
+the next one, so the rule holds for any caller rather than depending on the
+form. The bracket itself is never sent.
 
 ## 5. Invariants the UI is built to surface
 

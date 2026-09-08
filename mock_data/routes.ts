@@ -44,6 +44,7 @@ import {
   serializePerson,
   serializeIncident,
   serializePosition,
+  snapToStep,
   serializeSessionUser,
   serializeUserAccount,
 } from "./serializers"
@@ -1163,7 +1164,8 @@ function attendanceRecords(): Collection {
       row.justification,
     ) as AttendanceEventRow["justification"]
     row.reason = text(data, "reason", row.reason)
-    row.minutes = row.type === "ABSENCE" ? null : Number(data.minutes)
+    row.minutes =
+      row.type === "ABSENCE" ? null : snapToStep(Number(data.minutes))
   }
 
   return {

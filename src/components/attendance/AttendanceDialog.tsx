@@ -30,37 +30,31 @@ const TYPE_LABEL: Record<string, string> = {
 }
 
 /**
- * The six brackets the business reports on, each mapped to a representative
- * figure.
+ * The six steps the business reports on.
  *
- * The bracket is what people think in; the record stores real minutes so the
- * brackets can be redrawn later without a migration. Picking one fills the
- * minutes field, which stays editable for when the exact number is known.
+ * Time is not tracked to the exact minute: a lateness of 0–15 min counts as
+ * 15, 16–30 counts as 30, and so on up to four hours. What is stored is the
+ * step, so there is no exact figure to enter.
  */
 const DURATIONS = [
-  { value: "10", label: "Up to 15 min" },
-  { value: "25", label: "16 – 30 min" },
-  { value: "45", label: "31 – 60 min" },
-  { value: "90", label: "1 – 2 h" },
-  { value: "150", label: "2 – 3 h" },
-  { value: "240", label: "Over 3 h" },
+  { value: "15", label: "Up to 15 min" },
+  { value: "30", label: "16 – 30 min" },
+  { value: "60", label: "31 – 60 min" },
+  { value: "120", label: "1 – 2 h" },
+  { value: "180", label: "2 – 3 h" },
+  { value: "240", label: "3 – 4 h" },
 ]
 
-/** Which bracket a minutes figure falls in, for showing the select's value. */
-function bracketOf(minutes: string): string {
+/** Rounds a stored figure up to its step, so older records still select right. */
+function stepOf(minutes: string): string {
   const value = Number(minutes)
   if (!Number.isFinite(value) || value <= 0) return ""
-  if (value <= 15) return "10"
-  if (value <= 30) return "25"
-  if (value <= 60) return "45"
-  if (value <= 120) return "90"
-  if (value <= 180) return "150"
-  return "240"
+  return DURATIONS.find((step) => value <= Number(step.value))?.value ?? "240"
 }
 
 const EMPTY = {
   type: "LATE_ARRIVAL",
-  minutes: "10",
+  minutes: "15",
   justification: "UNEXCUSED",
   reason: "",
 }
@@ -167,7 +161,7 @@ export default function AttendanceDialog({
     setBanner(null)
     setForm({
       type: incident.type,
-      minutes: String(incident.minutes ?? ""),
+      minutes: stepOf(String(incident.minutes ?? "")),
       justification: incident.justification,
       reason: incident.reason,
     })
@@ -292,26 +286,16 @@ export default function AttendanceDialog({
           />
 
           {!isAbsence && (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <SelectField
-                name="bracket"
-                label="How long"
-                hint="Sets the minutes below; adjust it if you know the exact figure."
-                errors={errors}
-                value={bracketOf(form.minutes)}
-                onChange={(minutes) => setForm((f) => ({ ...f, minutes }))}
-                options={DURATIONS}
-              />
-              <TextField
-                name="minutes"
-                label="Minutes"
-                type="number"
-                required
-                errors={errors}
-                value={form.minutes}
-                onChange={(minutes) => setForm((f) => ({ ...f, minutes }))}
-              />
-            </div>
+            <SelectField
+              name="bracket"
+              label="How long"
+              hint="Counted in steps — up to 15 min counts as 15, up to 30 as 30, and so on."
+              errors={errors}
+              value={stepOf(form.minutes)}
+              onChange={(minutes) => setForm((f) => ({ ...f, minutes }))}
+              sorted={false}
+              options={DURATIONS}
+            />
           )}
 
           <SelectField

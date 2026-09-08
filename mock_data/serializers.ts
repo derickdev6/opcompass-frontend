@@ -408,6 +408,17 @@ export function headcount(): Headcount {
 // ---------------------------------------------------------------------------
 
 /** Upper bound of each reporting bracket, in minutes. */
+/**
+ * Attendance is counted in steps, not exact minutes: 0–15 counts as 15, 16–30
+ * as 30, and so on up to four hours. Snapping on write rather than in the form
+ * keeps the rule authoritative, so a record lands on a step whatever wrote it.
+ */
+export const MINUTE_STEPS = [15, 30, 60, 120, 180, 240] as const
+
+export function snapToStep(minutes: number): number {
+  return MINUTE_STEPS.find((step) => minutes <= step) ?? 240
+}
+
 const BUCKETS: { limit: number; bucket: AttendanceBucket }[] = [
   { limit: 15, bucket: "M15" },
   { limit: 30, bucket: "M30" },
